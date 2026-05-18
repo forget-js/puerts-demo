@@ -6,6 +6,7 @@ DerivedDataCache/
 Intermediate/
 Saved/
 Build/
+*.sln
 
 # 打包 / 平台产物（按需增删平台目录名）
 Android_ASTC/
