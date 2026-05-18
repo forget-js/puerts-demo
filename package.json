@@ -1,0 +1,17 @@
+{
+  "name": "puertsdemo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "gen:mixin-index": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-index.mjs",
+    "start": "npm run gen:mixin-index && tsc --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "typescript": "^4.7.4"
+  }
+}

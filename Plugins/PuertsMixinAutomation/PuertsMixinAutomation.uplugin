@@ -1,0 +1,24 @@
+{
+  "FileVersion": 3,
+  "FriendlyName": "Puerts Mixin Automation",
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "Description": "Editor automation for Puerts Blueprint mixin TypeScript files.",
+  "Category": "Programming",
+  "CreatedBy": "PuertsDemo",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "Modules": [
+    {
+      "Name": "PuertsMixinAutomationEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "Puerts",
+      "Enabled": true
+    }
+  ]
+}
