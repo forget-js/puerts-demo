@@ -8,5 +8,7 @@ UPuertsMixinAutomationSettings::UPuertsMixinAutomationSettings()
     , bCreateOnlyMissingMixins(true)
     , bGenerateOnBlueprintSave(true)
     , BlueprintSaveDebounceSeconds(1.0f)
+    , NodeExecutablePath(TEXT("node"))
+    , MixinTemplateScriptPath(TEXT("Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs"))
 {
 }

@@ -1,8 +1,16 @@
+/**
+ * 扫描 MixinSourceRoot 下所有 .ts 文件，生成 mixin-imports.ts 聚合 import。
+ *
+ * 可作为独立脚本运行；编辑器模块内也有等价的 C++ 实现（GenerateMixinIndex）。
+ *
+ * 用法: node generate-mixin-index.mjs --project=<项目根> --mixin-root=... --index=...
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
 
+/** 从命令行读取 --name=value 参数 */
 function readArg(name, fallback) {
   const prefix = `--${name}=`;
   const value = args.find((arg) => arg.startsWith(prefix));
@@ -13,6 +21,7 @@ const projectRoot = path.resolve(readArg('project', process.cwd()));
 const mixinRoot = path.resolve(projectRoot, readArg('mixin-root', 'TypeScript/Mixins/Blueprints'));
 const indexFile = path.resolve(projectRoot, readArg('index', 'TypeScript/Mixins/_generated/mixin-imports.ts'));
 
+/** 递归收集目录下所有 .ts 文件（排除 .d.ts） */
 function walk(dir) {
   if (!fs.existsSync(dir)) {
     return [];

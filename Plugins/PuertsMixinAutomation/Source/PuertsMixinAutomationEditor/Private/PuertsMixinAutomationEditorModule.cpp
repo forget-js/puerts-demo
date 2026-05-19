@@ -3,22 +3,21 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "CodeGenerator.h"
-#include "Components/ActorComponent.h"
 #include "Engine/Blueprint.h"
-#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IDeclarationGenerator.h"
 #include "ISettingsModule.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "PathEscape.h"
 #include "PuertsMixinAutomationSettings.h"
 
 #define LOCTEXT_NAMESPACE "FPuertsMixinAutomationEditorModule"
 
 namespace
 {
+/** 规范化 Content 资产根路径：统一斜杠、补全 /Game 前缀、去除末尾斜杠 */
 FString NormalizeAssetRoot(FString Path)
 {
     Path.TrimStartAndEndInline();
@@ -39,6 +38,7 @@ FString NormalizeAssetRoot(FString Path)
     return Path;
 }
 
+/** 规范化项目相对路径：统一斜杠并去除开头的 / */
 FString NormalizeProjectRelativePath(FString Path)
 {
     Path.TrimStartAndEndInline();
@@ -50,16 +50,19 @@ FString NormalizeProjectRelativePath(FString Path)
     return Path;
 }
 
+/** 将项目相对路径转换为磁盘绝对路径 */
 FString ToProjectAbsolutePath(const FString& ProjectRelativePath)
 {
     return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / NormalizeProjectRelativePath(ProjectRelativePath));
 }
 
+/** 判断包名/路径是否位于指定资产根路径下（含根路径本身） */
 bool IsUnderAssetRoot(const FString& PackageNameOrPath, const FString& RootPath)
 {
     return PackageNameOrPath == RootPath || PackageNameOrPath.StartsWith(RootPath / TEXT(""));
 }
 
+/** 从完整包名中剥离根路径，得到用于映射 mixin 文件目录的相对路径 */
 FString MakeRelativePackagePath(const FString& PackageName, const FString& RootPath)
 {
     FString RelativePath = PackageName;
@@ -74,25 +77,7 @@ FString MakeRelativePackagePath(const FString& PackageName, const FString& RootP
     return RelativePath;
 }
 
-FString MakeTypeScriptNamespace(const FString& PackageName)
-{
-    FString Trimmed = PackageName;
-    while (Trimmed.StartsWith(TEXT("/")))
-    {
-        Trimmed.RightChopInline(1);
-    }
-
-    TArray<FString> Segments;
-    Trimmed.ParseIntoArray(Segments, TEXT("/"), true);
-
-    for (FString& Segment : Segments)
-    {
-        Segment = PUERTS_NAMESPACE::FilenameToTypeScriptVariableName(Segment);
-    }
-
-    return FString::Join(Segments, TEXT("."));
-}
-
+/** 计算 TypeScript import 相对路径（不含 .ts 后缀，以 ./ 开头） */
 FString MakeImportPath(const FString& FromDirectory, const FString& ToFile)
 {
     FString FromNorm = FPaths::ConvertRelativePathToFull(FromDirectory);
@@ -143,56 +128,7 @@ FString MakeImportPath(const FString& FromDirectory, const FString& ToFile)
     return RelativePath;
 }
 
-FString MakeLifecycleBody(const UClass* BlueprintClass)
-{
-    FString Body;
-
-    if (BlueprintClass && BlueprintClass->IsChildOf(AActor::StaticClass()))
-    {
-        Body += TEXT("    ReceiveBeginPlay(): void {\n");
-        Body += TEXT("    }\n\n");
-        Body += TEXT("    ReceiveTick(DeltaSeconds: number): void {\n");
-        Body += TEXT("    }\n");
-    }
-    else if (BlueprintClass && BlueprintClass->IsChildOf(UActorComponent::StaticClass()))
-    {
-        Body += TEXT("    ReceiveBeginPlay(): void {\n");
-        Body += TEXT("    }\n\n");
-        Body += TEXT("    ReceiveTick(DeltaSeconds: number): void {\n");
-        Body += TEXT("    }\n");
-    }
-    else
-    {
-        Body += TEXT("    // Add Blueprint event overrides here.\n");
-    }
-
-    return Body;
-}
-
-FString BuildMixinSource(const FAssetData& AssetData, const UBlueprint* Blueprint)
-{
-    const FString PackageName = AssetData.PackageName.ToString();
-    const FString AssetName = AssetData.AssetName.ToString();
-    const FString ClassPath = FString::Printf(TEXT("%s.%s_C"), *PackageName, *AssetName);
-    const FString TypePath = FString::Printf(TEXT("UE.%s.%s"),
-        *MakeTypeScriptNamespace(PackageName), *PUERTS_NAMESPACE::FilenameToTypeScriptVariableName(AssetName + TEXT("_C")));
-    const FString MixinClassName = PUERTS_NAMESPACE::FilenameToTypeScriptVariableName(AssetName + TEXT("Mixin"));
-    const UClass* BlueprintClass = Blueprint ? Blueprint->GeneratedClass : nullptr;
-
-    FString Source;
-    Source += TEXT("import * as UE from 'ue';\n");
-    Source += TEXT("import { blueprint } from 'puerts';\n\n");
-    Source += FString::Printf(TEXT("const uclass = UE.Class.Load(\"%s\");\n"), *ClassPath);
-    Source += FString::Printf(TEXT("const jsClass = blueprint.tojs<typeof %s>(uclass);\n\n"), *TypePath);
-    Source += FString::Printf(TEXT("interface %s extends %s { }\n"), *MixinClassName, *TypePath);
-    Source += FString::Printf(TEXT("class %s implements %s {\n"), *MixinClassName, *MixinClassName);
-    Source += MakeLifecycleBody(BlueprintClass);
-    Source += TEXT("}\n\n");
-    Source += FString::Printf(TEXT("blueprint.mixin(jsClass, %s);\n"), *MixinClassName);
-
-    return Source;
-}
-
+/** 兼容 UE4/UE5 资产类名判断：是否为 Blueprint 资产 */
 bool IsBlueprintAsset(const FAssetData& AssetData)
 {
 #if ENGINE_MAJOR_VERSION >= 5
@@ -270,6 +206,7 @@ void FPuertsMixinAutomationEditorModule::UnregisterAssetCallbacks()
 
 void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetData)
 {
+    // 仅处理配置根路径下的 Blueprint 保存事件
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
     if (!Settings || !Settings->bGenerateOnBlueprintSave || !IsBlueprintAsset(AssetData))
     {
@@ -300,6 +237,7 @@ void FPuertsMixinAutomationEditorModule::QueueDeclarationRefresh(FName SearchPat
 
 bool FPuertsMixinAutomationEditorModule::TickPendingDeclarationRefresh(float DeltaTime)
 {
+    // 等待防抖窗口结束后再批量处理，避免连续保存重复生成
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
     const double DebounceSeconds = Settings ? FMath::Max(0.1f, Settings->BlueprintSaveDebounceSeconds) : 1.0;
 
@@ -315,6 +253,7 @@ bool FPuertsMixinAutomationEditorModule::TickPendingDeclarationRefresh(float Del
 
 void FPuertsMixinAutomationEditorModule::FlushPendingDeclarationRefresh()
 {
+    // 先刷新 ue_bp.d.ts 等声明，再基于最新类型信息生成 mixin
     if (!IDeclarationGenerator::IsAvailable())
     {
         PendingDeclarationSearchPaths.Reset();
@@ -388,21 +327,70 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
             continue;
         }
 
-        UBlueprint* Blueprint = Cast<UBlueprint>(AssetData.GetAsset());
-        if (!Blueprint || !Blueprint->GeneratedClass)
+        // 先创建空文件占位，再由 Node 脚本写入完整模板内容
+        IFileManager::Get().MakeDirectory(*FPaths::GetPath(MixinFileAbsolute), true);
+        if (!FFileHelper::SaveStringToFile(TEXT(""), *MixinFileAbsolute, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         {
             continue;
         }
 
-        IFileManager::Get().MakeDirectory(*FPaths::GetPath(MixinFileAbsolute), true);
-        if (FFileHelper::SaveStringToFile(
-                BuildMixinSource(AssetData, Blueprint), *MixinFileAbsolute, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+        if (RunMixinTemplateGenerator(PackageName))
         {
             ++CreatedCount;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation failed to generate mixin template for %s"), *PackageName);
         }
     }
 
     return CreatedCount;
+}
+
+bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString& BlueprintPackageName) const
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings)
+    {
+        return false;
+    }
+
+    const FString ScriptAbsolute = ToProjectAbsolutePath(Settings->MixinTemplateScriptPath);
+    if (!FPaths::FileExists(ScriptAbsolute))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation template script not found: %s"), *ScriptAbsolute);
+        return false;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+    const FString Params = FString::Printf(
+        TEXT("\"%s\" --project=\"%s\" --blueprint=\"%s\" --blueprint-root=\"%s\" --mixin-root=\"%s\""),
+        *ScriptAbsolute,
+        *ProjectDir,
+        *BlueprintPackageName,
+        *RootPath,
+        *NormalizeProjectRelativePath(Settings->MixinSourceRoot));
+
+    int32 ReturnCode = INDEX_NONE;
+    FString StdOut;
+    FString StdErr;
+    if (!FPlatformProcess::ExecProcess(*Settings->NodeExecutablePath, *Params, &ReturnCode, &StdOut, &StdErr))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("PuertsMixinAutomation failed to launch %s. Ensure Node.js is on PATH or configure NodeExecutablePath."),
+            *Settings->NodeExecutablePath);
+        return false;
+    }
+
+    if (ReturnCode != 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation mixin template script failed for %s (exit %d). %s%s"),
+            *BlueprintPackageName, ReturnCode, *StdOut, *StdErr);
+        return false;
+    }
+
+    return true;
 }
 
 void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
