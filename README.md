@@ -50,7 +50,7 @@ npx tsc --noEmit
 
 | 时机 | 行为 |
 |------|------|
-| 点击编辑器工具栏 Puerts「生成 *.d.ts」 | Puerts `DeclarationGenerator` 完成后会触发本插件：**为缺失文件生成 Mixin 模板**，并刷新 **Mixin 聚合导入** |
+| 点击编辑器工具栏 Puerts「生成 *.d.ts」 | Puerts `DeclarationGenerator` 完成后会触发本插件：**为缺失文件生成 Mixin 模板**（由 Node 脚本 `generate-mixin-template.mjs` 写入），并刷新 **Mixin 聚合导入** |
 | `/Game/Blueprints/**` 下蓝图在编辑器中变更并写入资产注册表 | 防抖后调用声明生成刷新 `Typing`，并同上更新 Mixin 与索引 |
 
 约定（可通过项目设置覆盖）：
@@ -60,6 +60,12 @@ npx tsc --noEmit
 | 蓝图根路径 `/Game/Blueprints` | 仅对该路径递归下的 Blueprint 做自动化 |
 | Mixin TS 输出 `TypeScript/Mixins/Blueprints` | `Content/Blueprints/Foo/BP_XXX` → `TypeScript/Mixins/Blueprints/Foo/BP_XXX.ts` |
 | `bCreateOnlyMissingMixins=true` | **不覆盖**已存在的 Mixin 文件 |
+
+Mixin 模板内容由 **`Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs`** 生成（含 `ReceiveBeginPlay` / `ReceiveTick` / `ReceiveEndPlay` 等生命周期 stub）。修改模板只需编辑该脚本，**无需重新编译插件**。本地调试示例：
+
+```bash
+npm run gen:mixin-template -- --blueprint=/Game/Blueprints/BP_Cube
+```
 
 ### 编辑器里改配置
 

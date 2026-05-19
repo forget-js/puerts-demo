@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "gen:mixin-index": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-index.mjs",
+    "gen:mixin-template": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs",
     "start": "npm run gen:mixin-index && tsc --watch"
   },
   "keywords": [],
