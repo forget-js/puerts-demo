@@ -82,6 +82,9 @@ pnpm-debug.log*
 # -----------------------------------------------------------------------------
 /TypeScript/Mixins/_generated/mixin-imports.ts
 
+# 本地开发配置覆盖（复制 Config/Env/config.dev.example.ts 为 config.dev.ts）
+/TypeScript/Config/Env/config.dev.ts
+
 # .NET / UBT 插件（如 CSharpParamDefaultValueMetas）构建产物
 **/obj/
 **/bin/

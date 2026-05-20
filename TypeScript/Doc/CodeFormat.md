@@ -80,6 +80,16 @@ npm start          # 或 npx tsc --watch
 ```
 TypeScript/
 ├── Main.ts                          # 常驻入口，仅保留少量静态 import
+├── Config/
+│   ├── Config.ts                    # 合并 Env 配置，export Config / CC
+│   └── Env/
+│       ├── config.default.ts        # 默认配置（入库）
+│       ├── config.dev.example.ts    # 本地 dev 配置示例（入库）
+│       └── config.dev.ts            # 本地覆盖（gitignore，复制 example 后修改）
+├── Global/
+│   ├── index.ts                     # export { GF, GE }
+│   ├── Function.ts                  # GF（Log 等全局函数）
+│   └── Enums.ts                     # GE（LogLevel 等）
 ├── Game/
 │   └── register.ts                  # 业务脚本注册（可按模块继续拆分）
 ├── Mixins/
@@ -96,8 +106,36 @@ TypeScript/
 |------|------|
 | `/Game/Blueprints/**` | 参与 Mixin 自动化的蓝图根路径（可在插件设置中覆盖） |
 | `TypeScript/Mixins/Blueprints/Foo/BP_Xxx.ts` | 对应 `Content/Blueprints/Foo/BP_Xxx` |
+| `TypeScript/Global/` | 全局工具 `GF`、全局枚举 `GE` |
+| `TypeScript/Config/` | 运行时配置；日志阈值等由 `GF.Log` 读取，Mixin 一般不改 |
 | `Typing/` | Puerts 生成的 UE 声明，**勿提交无关手改** |
 | `Content/JavaScript/` | `tsc` 编译产物 |
+
+**配置（Config）：**
+
+- 首次克隆后复制：`Config/Env/config.dev.example.ts` → `Config/Env/config.dev.ts`。
+- `config.dev.ts` 已 gitignore，用于本机调试（如 `log.moduleMinLevel` 只放开当前 Mixin）。
+
+**全局日志（Mixin 中）：**
+
+```typescript
+import { GF, GE } from '../../../Global';
+
+// 仅 Output Log
+GF.Log('仅控制台', { level: GE.LogLevel.Verbose });
+
+// Mixin 常用：一行，默认上屏 + Log 级别
+GF.Log(this, '上屏 + Log');
+
+// 指定级别；第 4 参数 module 配合 Config.log.moduleMinLevel
+GF.Log(this, 'Verbose 调试', GE.LogLevel.Verbose, 'Mixins/Blueprints/Actors/BP_Actor');
+
+// 完整 options（少数情况）
+GF.Log(this, '自定义', { level: GE.LogLevel.Warning, duration: 5 });
+```
+
+- 只 `import { GF, GE }`，不要零散 `import { LogLevel }`。
+- `GF.Log(this, msg)` 第一个参数为 Actor/WorldContext；日志正文避免连续大量 `-`（`GF.Log` 会将 `----` 转为 `====`）。
 
 **降低合并冲突：**
 
@@ -270,7 +308,7 @@ private releaseOverlap(): void {
 
 - 参数命名：`xxxXxx`，禁止 `_xxx` / `xxx_xxx` 等形式。
 - 单函数逻辑（不含注释）建议 **≤ 30 行**，尽量一屏内读完。
-- 使用 `console.log` 或项目统一日志封装；**禁止**裸用 `print`。
+- 使用 **`GF.Log`**（`import { GF, GE } from '.../Global'`）或等价项目封装；**禁止**裸用 `print`；调试日志优先于散落 `console.log`。
 - 日志内容中避免大量 `-` 字符（可用 `=` 代替分隔线）。
 
 **私有方法**使用 TypeScript `private`，命名仍遵循动词前缀规范（见第 5 节）。
