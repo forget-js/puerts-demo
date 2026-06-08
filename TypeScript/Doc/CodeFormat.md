@@ -183,7 +183,7 @@ GF.Log(this, '自定义', { level: GE.LogLevel.Warning, duration: 5 });
 import * as UE from 'ue';
 import { blueprint } from 'puerts';
 // 按需: import { $ref } from 'puerts';
-import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
+import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from '../../../Runtime';
 
 const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Actor.BP_Actor_C");
 const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C>(uclass);
@@ -191,8 +191,8 @@ const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Acto
 interface BP_ActorMixin extends UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C { }
 class BP_ActorMixin implements BP_ActorMixin {
 
-    // --- 成员变量（private）---
-    // 注意：Puerts Mixin 不会执行 TS class 字段初始化。对象级状态请通过 getMixinRuntimeState(this) 懒加载。
+    // --- 状态访问方法（private）---
+    // 注意：Puerts Mixin 不保证 TS class 字段初始化。对象级状态请通过 getMixinRuntimeState(this) 管理。
 
     // --- 生命周期 ---
     // --- 监听 / 委托回调 ---
@@ -204,10 +204,48 @@ class BP_ActorMixin implements BP_ActorMixin {
 blueprint.mixin(jsClass, BP_ActorMixin);
 ```
 
+**自定义运行时状态：**
+
+Mixin 不是通过正常 `new XxxMixin()` 创建实例，而是把 TS 方法混入已有 UE / 蓝图对象。不要依赖 `constructor` 或 TS class field 初始化保存运行时状态。
+
+```typescript
+// 禁止：字段初始化可能不会按普通 TS class 语义执行。
+class BP_ActorMixin implements BP_ActorMixin {
+    private angle = 0;
+    private center = new UE.Vector();
+}
+```
+
+实例级业务状态必须挂在 `getMixinRuntimeState(this)` 返回的状态对象上。本文件内用私有接口扩展 `MixinRuntimeState`，不要另起模块级 `WeakMap` / `Map` 保存同一类状态。
+
+```typescript
+interface OrbitRuntimeState {
+    center: UE.Vector;
+    angle: number;
+}
+
+interface BP_ActorRuntimeState extends MixinRuntimeState {
+    orbit?: OrbitRuntimeState;
+}
+
+private getRuntimeState(): BP_ActorRuntimeState {
+    return getMixinRuntimeState(this) as BP_ActorRuntimeState;
+}
+```
+
+状态应在 `ReceiveBeginPlay` 或明确的 `initXxx` 中初始化，在 `ReceiveEndPlay` 中随 `clearMixinRuntimeState(this)` 统一释放。`ReceiveTick` 及其调用链只能读取已初始化状态；状态缺失时应直接返回或上报异常，禁止在 Tick 中懒创建业务状态，以免生命周期异常时使用默认值继续运行。
+
+**状态归属：**
+
+- 蓝图/策划需要配置或查看的数据，放蓝图变量，使用 `bp_` 前缀，如 `this.bp_radius`。
+- TS 运行时临时状态，放 `getMixinRuntimeState(this)`，如 BeginPlay 记录的圆心、当前角度、委托与定时器。
+- 模块常量和类型声明，放模块顶层，如 `const ORBIT_ANGULAR_SPEED`、`interface OrbitRuntimeState`；类型声明编译后不会产生运行时代码。
+- 不要把实例运行时状态写成 Mixin class field，也不要通过 `constructor` 初始化。
+
 **禁止：**
 
 - 在模块顶层定义可被其他文件误用的可变全局变量。
-- 在类外定义与模块状态相关的「游离」变量（应放入 Mixin 类成员）。
+- 在类外定义与实例运行时状态相关的「游离」变量（应放入 `MixinRuntimeState`）。
 - 在模块顶层定义与类无关的全局函数。
 
 **导入约定：**
@@ -233,7 +271,7 @@ ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
 
 | 规则 | 说明 |
 |------|------|
-| `ReceiveTick` | 默认不实现；必须 Tick 时需在模块说明中写清原因，蓝图 Event Graph 也需有连线才会生效 |
+| `ReceiveTick` | 默认不实现；必须 Tick 时需在模块说明中写清原因、性能影响与状态初始化方式，蓝图 Event Graph 也需有连线才会生效 |
 | 自定义函数勿以 `Receive` 开头 | `Receive` 保留给引擎 / 蓝图生命周期 |
 | `ReceiveEndPlay` | 必须清理定时器、委托、全局监听 |
 
@@ -338,8 +376,29 @@ private doSomething(otherModule: SomeModule, arg1: number): void {
 **禁止：**
 
 - 运行时动态给 `this` 挂未在类型/蓝图中声明的属性。
-- 直接调用 `K2_` 系列（若项目有封装层，走封装 API）。
+- 在 Mixin 中直接调用 `K2_` 系列；Actor 位移等通用操作应走 `GF` 封装 API（如 `GF.GetActorLocation` / `GF.SetActorLocation`），项目已有更具体封装时走项目封装。
 - `for` / `if` 嵌套超过 **2 层**（应拆分函数）。
+
+### 4.9 UE API 调用与封装
+
+Puerts 已生成完整 UE API 声明，AI 和开发者可以查到函数签名；但业务代码不能因此直接散落调用所有 UE API。调用边界按风险划分，而不是追求封装覆盖率。
+
+**Mixin / Game 业务层：**
+
+- 优先使用 `GF` / `GE`、本模块私有方法、蓝图 `BP_` 函数和项目已有封装。
+- 可以直接使用低风险读取或构造类 API，如 `GetName()`、简单只读判断、`new UE.Vector(...)`。
+- 不直接调用高风险 UE API：`K2_` 系列、带 `$ref` / out 参数、多个 boolean 参数、WorldContext / LatentInfo、Spawn / Destroy / Attach / 位移 / 碰撞 / 显隐 / 输入 / 异步加载等。
+- 不直接调用动画、粒子、音效、UMG 动效等表现 API；TS 只触发业务意图，表现交给蓝图 `BP_` 函数。
+
+**GF 封装层：**
+
+- 面向业务语义暴露小而稳定的全局函数，如 `GF.SetActorLocation`、`GF.Log`。
+- 负责收敛 `$ref`、默认参数、项目约束和容易误用的 UE 调用。
+- 新增封装时只覆盖项目实际需要的高风险/高频能力，不把 UE SDK 全量复制一遍。
+
+**例外：**
+
+- 若 Mixin 中确实需要直接调用高风险 UE API，必须在代码评审中说明原因；可复用或容易误用的调用应先补 `GF` 封装。
 
 ---
 
