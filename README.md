@@ -2,6 +2,8 @@
 
 基于 **Unreal Engine 5.7** 与 [**Puerts**](https://github.com/Tencent/puerts) 的示例工程，脚本主要使用 TypeScript Source Map 开发与 **Blueprint Mixin** 模式。
 
+当前工程按正式项目最小骨架组织：`Main.ts` 只负责进入 `Bootstrap/startGame`，业务模块显式注册，Blueprint Mixin 默认显式 opt-in，不再假设所有蓝图都需要脚本。
+
 ---
 
 ## 环境要求
@@ -21,18 +23,17 @@
 
 ```bash
 npm install
-npm run gen:mixin-index   # 生成 TypeScript/Mixins/_generated/mixin-imports.ts（详见下文）
-npm start                 # 等价于生成索引后再 tsc --watch，输出到 Content/JavaScript
+npm run check             # 生成 Mixin 索引、检查 Mixin 路径并执行 tsc --noEmit
+npm start                 # 生成索引后 tsc --watch，输出到 Content/JavaScript
 ```
 
-仅检查类型可不监听：
+构建脚本产物：
 
 ```bash
-npm run gen:mixin-index
-npx tsc --noEmit
+npm run build             # 写入脚本版本信息，生成索引并编译到 Content/JavaScript
 ```
 
-运行时入口仍为 Puerts 侧加载的 **`Main`** 模块（由 `Main.ts` 编译为 `Content/JavaScript/Main.js`，具体在项目 C++ GameInstance 中配置）。
+运行时入口仍为 Puerts 侧加载的 **`Main`** 模块（由 `Main.ts` 编译为 `Content/JavaScript/Main.js`，具体在项目 C++ GameInstance 中配置）。`Main.ts` 会调用 `Bootstrap/startGame.ts`，由 Bootstrap 统一安装错误边界、加载 Mixin、注册并启动业务模块。
 
 ---
 
@@ -50,22 +51,37 @@ npx tsc --noEmit
 
 | 时机 | 行为 |
 |------|------|
-| 点击编辑器工具栏 Puerts「生成 *.d.ts」 | Puerts `DeclarationGenerator` 完成后会触发本插件：**为缺失文件生成 Mixin 模板**（由 Node 脚本 `generate-mixin-template.mjs` 写入），并刷新 **Mixin 聚合导入** |
-| `/Game/Blueprints/**` 下蓝图在编辑器中变更并写入资产注册表 | 防抖后调用声明生成刷新 `Typing`，并同上更新 Mixin 与索引 |
+| 点击编辑器工具栏 Puerts「生成 *.d.ts」 | Puerts `DeclarationGenerator` 完成后会触发本插件：按 `AutoCreateMixinPolicy` 创建缺失 Mixin 模板，并刷新 **Mixin 聚合导入** |
+| `/Game/Blueprints/**` 下蓝图在编辑器中变更并写入资产注册表 | 防抖后调用声明生成刷新 `Typing`，并维护已有 Mixin 索引 |
+| Content Browser 中右键 Blueprint | 选择 **Create Puerts Mixin TS Script**，为选中蓝图显式创建对应 Mixin，并刷新 **Mixin 聚合导入** |
 
 约定（可通过项目设置覆盖）：
 
 | 配置项（默认） | 含义 |
 |----------------|------|
-| 蓝图根路径 `/Game/Blueprints` | 仅对该路径递归下的 Blueprint 做自动化 |
+| 蓝图根路径 `/Game/Blueprints` | 声明生成与 Mixin 路径映射根路径 |
+| 脚本蓝图根路径 `/Game/Blueprints/Scripted` | 可选自动创建目录；右键显式创建不受该目录限制 |
 | Mixin TS 输出 `TypeScript/Mixins/Blueprints` | `Content/Blueprints/Foo/BP_XXX` → `TypeScript/Mixins/Blueprints/Foo/BP_XXX.ts` |
+| `AutoCreateMixinPolicy=Disabled` | 正式项目默认不自动创建模板；可选 `ScriptedRootOnly` / `All` |
 | `bCreateOnlyMissingMixins=true` | **不覆盖**已存在的 Mixin 文件 |
 
-Mixin 模板内容由 **`Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs`** 生成（含 `ReceiveBeginPlay` / `ReceiveTick` / `ReceiveEndPlay` 等生命周期 stub）。修改模板只需编辑该脚本，**无需重新编译插件**。本地调试示例：
+Mixin 模板内容由 **`Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs`** 生成（含 `getMixinRuntimeState` 与基础生命周期 stub）。修改模板只需编辑该脚本，**无需重新编译插件**。
+
+正式项目推荐流程：
+
+1. 新建 Blueprint，并放在 `/Game/Blueprints/**` 的常规业务目录下。
+2. 点击 Puerts「生成 *.d.ts」或保存蓝图触发声明刷新。
+3. 在 Content Browser 中右键该 Blueprint，选择 **Create Puerts Mixin TS Script**。
+4. 插件会创建 `TypeScript/Mixins/Blueprints/.../BP_Xxx.ts` 并刷新 `_generated/mixin-imports.ts`。
+
+命令行备用方式：
 
 ```bash
 npm run gen:mixin-template -- --blueprint=/Game/Blueprints/BP_Cube
+npm run gen:mixin-index
 ```
+
+正式项目建议：纯表现、装饰、数据承载蓝图不要创建 Mixin；只有需要 TypeScript 接管逻辑或生命周期的蓝图才右键 opt-in。
 
 ### 编辑器里改配置
 
@@ -77,10 +93,12 @@ npm run gen:mixin-template -- --blueprint=/Game/Blueprints/BP_Cube
 
 ## TypeScript 入口约定（降低合并冲突）
 
-- **`TypeScript/Main.ts`**：常驻入口，只保留少量静态 `import`。  
+- **`TypeScript/Main.ts`**：常驻入口，只调用 `Bootstrap/startGame`。  
+- **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动。  
+- **`TypeScript/Runtime/`**：轻量运行时基础层，包括模块生命周期、委托清理、定时器清理、错误边界和脚本版本信息。  
 - **`TypeScript/Mixins/register.ts`**：固定引入聚合文件（人工一般不动）。  
 - **`TypeScript/Mixins/_generated/mixin-imports.ts`**：**由编辑器插件或 `npm run gen:mixin-index` 生成**，按目录扫描 `Mixins/Blueprints/**/*.ts` 写入 side-effect imports。  
-- **`TypeScript/Game/register.ts`**：业务侧注册拆分入口，可按模块继续拆多个 `Game/**/register.ts` 再在 `Main` 聚合。
+- **`TypeScript/Game/register.ts`**：业务模块显式注册入口，由 Bootstrap 调用。
 
 生成的 **相对路径应为 `../Blueprints/xxx`**（从 `_generated` 回到同级 `Mixins/Blueprints`）。若出现异常路径，请先重新编译 **PuertsMixinAutomation** 编辑器模块并触发一次索引生成。
 
@@ -110,7 +128,7 @@ git rm --cached TypeScript/Mixins/_generated/mixin-imports.ts
 A：多为 `mixin-imports` 里相对路径错误（应为 `../Blueprints/...`）。重新编译 **PuertsMixinAutomation** 插件后，在编辑器点一次 Puerts 生成声明，或执行 `npm run gen:mixin-index` 并重新 `tsc`。
 
 **Q：新建蓝图后没有自动出现 Mixin 文件**  
-A：需保证蓝图在 **`/Game/Blueprints/**`** 下，并已触发一次「生成声明」或依赖插件的蓝图保存逻辑；同时确认 `.uproject` 已启用 **PuertsMixinAutomation**。
+A：这是正式项目默认行为。默认 `AutoCreateMixinPolicy=Disabled`，不会自动创建 Mixin。需要脚本的蓝图请在 Content Browser 中右键该 Blueprint，选择 **Create Puerts Mixin TS Script**。
 
 ---
 

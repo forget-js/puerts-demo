@@ -79,7 +79,15 @@ npm start          # 或 npx tsc --watch
 
 ```
 TypeScript/
-├── Main.ts                          # 常驻入口，仅保留少量静态 import
+├── Main.ts                          # 常驻入口，只调用 Bootstrap/startGame
+├── Bootstrap/
+│   └── startGame.ts                 # 启动编排：配置、错误边界、Mixin、业务模块
+├── Runtime/
+│   ├── ModuleRegistry.ts            # 显式业务模块注册与生命周期
+│   ├── DelegateBag.ts               # 委托绑定/释放管理
+│   ├── TimerBag.ts                  # setTimeout / setInterval 清理管理
+│   ├── ErrorBoundary.ts             # 启动与模块错误边界
+│   └── BuildInfo.ts                 # 脚本构建版本信息
 ├── Config/
 │   ├── Config.ts                    # 合并 Env 配置，export Config / CC
 │   └── Env/
@@ -91,7 +99,8 @@ TypeScript/
 │   ├── Function.ts                  # GF（Log 等全局函数）
 │   └── Enums.ts                     # GE（LogLevel 等）
 ├── Game/
-│   └── register.ts                  # 业务脚本注册（可按模块继续拆分）
+│   ├── register.ts                  # 显式注册业务模块
+│   └── Features/                    # 按功能组织业务模块
 ├── Mixins/
 │   ├── register.ts                  # 固定引入 _generated/mixin-imports（勿手改）
 │   ├── _generated/
@@ -99,13 +108,17 @@ TypeScript/
 │   └── Blueprints/                  # 与 /Game/Blueprints 目录结构对应
 │       └── .../BP_Xxx.ts
 └── Doc/
-    └── CodeFormat.md                # 本文档
+    ├── CodeFormat.md                # 本文档
+    └── MixinReviewChecklist.md      # Mixin 评审短清单
 ```
 
 | 路径 | 说明 |
 |------|------|
-| `/Game/Blueprints/**` | 参与 Mixin 自动化的蓝图根路径（可在插件设置中覆盖） |
-| `TypeScript/Mixins/Blueprints/Foo/BP_Xxx.ts` | 对应 `Content/Blueprints/Foo/BP_Xxx` |
+| `/Game/Blueprints/**` | Puerts 声明生成与 Mixin 路径映射根路径 |
+| `/Game/Blueprints/Scripted/**` | 可选自动创建目录；实际项目可继续按业务目录组织蓝图，使用右键显式创建 Mixin |
+| `TypeScript/Mixins/Blueprints/Foo/BP_Xxx.ts` | 对应 `/Game/Blueprints/Foo/BP_Xxx`，存在该文件才表示 TS 接管 |
+| `TypeScript/Bootstrap/` | 启动编排层，禁止写具体玩法逻辑 |
+| `TypeScript/Runtime/` | 跨业务基础设施，只放小而稳定的工具 |
 | `TypeScript/Global/` | 全局工具 `GF`、全局枚举 `GE` |
 | `TypeScript/Config/` | 运行时配置；日志阈值等由 `GF.Log` 读取，Mixin 一般不改 |
 | `Typing/` | Puerts 生成的 UE 声明，**勿提交无关手改** |
@@ -137,10 +150,12 @@ GF.Log(this, '自定义', { level: GE.LogLevel.Warning, duration: 5 });
 - 只 `import { GF, GE }`，不要零散 `import { LogLevel }`。
 - `GF.Log(this, msg)` 第一个参数为 Actor/WorldContext；日志正文避免连续大量 `-`（`GF.Log` 会将 `----` 转为 `====`）。
 
-**降低合并冲突：**
+**降低合并冲突与运行时噪音：**
 
-- 新增 Mixin 后执行 `npm run gen:mixin-index`，不要手写 `mixin-imports.ts`。
-- 业务注册写在 `Game/register.ts` 或子模块 `register.ts`，由 `Main.ts` 聚合引入。
+- 新增 Mixin 后执行 `npm run check`，不要手写 `mixin-imports.ts`。
+- 只有需要 TS 接管逻辑的蓝图才右键创建 Mixin；纯表现、装饰、数据承载蓝图不创建 Mixin。
+- 新建需要脚本的蓝图后，先刷新声明文件，再在 Content Browser 中右键 Blueprint 执行 **Create Puerts Mixin TS Script**。
+- 业务模块在 `Game/register.ts` 显式注册，由 `Bootstrap/startGame.ts` 统一启动。
 
 ---
 
@@ -168,6 +183,7 @@ GF.Log(this, '自定义', { level: GE.LogLevel.Warning, duration: 5 });
 import * as UE from 'ue';
 import { blueprint } from 'puerts';
 // 按需: import { $ref } from 'puerts';
+import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 
 const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Actor.BP_Actor_C");
 const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C>(uclass);
@@ -176,6 +192,8 @@ interface BP_ActorMixin extends UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C { 
 class BP_ActorMixin implements BP_ActorMixin {
 
     // --- 成员变量（private）---
+    // 注意：Puerts Mixin 不会执行 TS class 字段初始化。对象级状态请通过 getMixinRuntimeState(this) 懒加载。
+
     // --- 生命周期 ---
     // --- 监听 / 委托回调 ---
     // --- 定时器 ---
@@ -200,7 +218,7 @@ blueprint.mixin(jsClass, BP_ActorMixin);
 
 ### 4.3 生命周期（蓝图事件）
 
-在 Mixin 中 **override** 引擎生命周期；一旦 override，蓝图侧同事件图实现会被覆盖，即使函数体为空。
+只有创建了 Mixin 的蓝图才由 TypeScript 接管生命周期。在 Mixin 中 **override** 引擎生命周期后，蓝图侧同事件图实现会被覆盖，即使函数体为空。
 
 ```typescript
 ReceiveBeginPlay(): void {
@@ -209,19 +227,13 @@ ReceiveBeginPlay(): void {
 }
 
 ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
-    this.removeAllListeners();
-    this.releaseOverlap();
-    this.clearAllTimers();
-}
-
-ReceiveTick(DeltaSeconds: number): void {
-    // 非必要勿实现；Tick 耗性能
+    clearMixinRuntimeState(this);
 }
 ```
 
 | 规则 | 说明 |
 |------|------|
-| `ReceiveTick` | 默认不实现；必须 Tick 时，蓝图 Event Graph 需有连线才会生效 |
+| `ReceiveTick` | 默认不实现；必须 Tick 时需在模块说明中写清原因，蓝图 Event Graph 也需有连线才会生效 |
 | 自定义函数勿以 `Receive` 开头 | `Receive` 保留给引擎 / 蓝图生命周期 |
 | `ReceiveEndPlay` | 必须清理定时器、委托、全局监听 |
 
@@ -243,36 +255,23 @@ private onXxxXxx(arg1: unknown): void {
 - 在本模块内替其他模块绑定监听。
 - 将监听直接绑到临时子对象的方法上（应绑到 `this` 的 `bind` 方法）。
 
-**组件委托**（如 Overlap）使用 `.Add(this.onXxx.bind(this))`，在 `ReceiveEndPlay` 中 `.Remove` 并置空引用。
+**组件委托**（如 Overlap）优先使用 `getMixinRuntimeState(this).delegates` 记录绑定，避免 `bind(this)` 生成不同函数引用导致无法 `Remove`。
 
 ### 4.5 定时调用
 
 优先使用标准 API，在 `ReceiveEndPlay` 中清理：
 
 ```typescript
-// 一次性延迟（类似蓝图 Delay）
-private delayTimerId?: ReturnType<typeof setTimeout>;
-
 private scheduleDelay(): void {
-    this.delayTimerId = setTimeout(() => this.onDelayed(), 1000);
+    getMixinRuntimeState(this).timers.setTimeout(() => this.onDelayed(), 1000);
 }
 
-// 循环（类似蓝图 Set Timer Looping）
-private loopTimerId?: ReturnType<typeof setInterval>;
-
 private scheduleLoop(): void {
-    this.loopTimerId = setInterval(() => this.onLoopTick(), 500);
+    getMixinRuntimeState(this).timers.setInterval(() => this.onLoopTick(), 500);
 }
 
 private clearAllTimers(): void {
-    if (this.delayTimerId !== undefined) {
-        clearTimeout(this.delayTimerId);
-        this.delayTimerId = undefined;
-    }
-    if (this.loopTimerId !== undefined) {
-        clearInterval(this.loopTimerId);
-        this.loopTimerId = undefined;
-    }
+    clearMixinRuntimeState(this);
 }
 ```
 
@@ -287,15 +286,15 @@ private clearAllTimers(): void {
 
 ```typescript
 private bindOverlap(): void {
-    this.Sphere1.OnComponentBeginOverlap.Add(this.onSphereBeginOverlap.bind(this));
+    getMixinRuntimeState(this).delegates.bind(this.Sphere1.OnComponentBeginOverlap, this, this.onSphereBeginOverlap);
 }
 
 private releaseOverlap(): void {
-    this.Sphere1.OnComponentBeginOverlap.Remove(this.onSphereBeginOverlap.bind(this));
+    clearMixinRuntimeState(this);
 }
 ```
 
-> 注意：`Remove` 需传入与 `Add` 时**相同引用**的函数；可将 `bind` 结果存为成员变量。
+> 注意：`Remove` 需传入与 `Add` 时**相同引用**的函数；除非有特殊原因，不要手写裸 `.Add(this.onXxx.bind(this))`。
 
 ### 4.7 UMG（仅 Widget 相关 Mixin）
 
@@ -404,7 +403,7 @@ private doSomething(otherModule: SomeModule, arg1: number): void {
 | 宏 | 使用引擎自带宏，不自定义宏 |
 | 碰撞 | 使用工程预设；**禁止** `SetCollisionEnabled` 私自改碰撞；用 `SetCollisionProfileName` |
 | Sequence | 多用 Sequence 节点理清流程 |
-| 组件被 TS 引用 | 组件名 **`Lua` 前缀**，策划不可改 |
+| 组件被 TS 引用 | 组件名 **`Ts` 前缀**，策划不可改 |
 | 变量类型 | 能用枚举不用 `Byte` / 整型代替 |
 | Construction Script | **不要**写逻辑 |
 
