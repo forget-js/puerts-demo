@@ -1,3 +1,14 @@
+// PuertsMixinAutomation 编辑器模块实现。
+//
+// 工作流程概览：
+//   Blueprint 保存 / 右键菜单 / CodeGenerator 手动触发
+//        ↓
+//   刷新 TypeScript 声明（ue_bp.d.ts）
+//        ↓
+//   按配置为 Blueprint 生成 Mixin .ts 模板（Node 脚本）
+//        ↓
+//   重写 mixin-imports.ts 聚合索引，必要时创建 register.ts 入口
+
 #include "PuertsMixinAutomationEditorModule.h"
 
 #include "AssetRegistry/IAssetRegistry.h"
@@ -19,6 +30,9 @@
 
 #define LOCTEXT_NAMESPACE "FPuertsMixinAutomationEditorModule"
 
+// ---------------------------------------------------------------------------
+// 匿名命名空间：路径规范化与资产筛选辅助函数
+// ---------------------------------------------------------------------------
 namespace
 {
 /** 规范化 Content 资产根路径：统一斜杠、补全 /Game 前缀、去除末尾斜杠 */
@@ -94,6 +108,7 @@ FString MakeImportPath(const FString& FromDirectory, const FString& ToFile)
     FromNorm.ParseIntoArray(FromSegments, TEXT("/"), true);
     ToNorm.ParseIntoArray(ToSegments, TEXT("/"), true);
 
+    // 找到 From/To 路径的公共前缀长度，用于计算相对路径
     int32 Prefix = 0;
     while (Prefix < FromSegments.Num() && Prefix < ToSegments.Num()
         && FromSegments[Prefix].Equals(ToSegments[Prefix], ESearchCase::IgnoreCase))
@@ -158,6 +173,10 @@ bool TryGetAutoCreateScanRoot(const UPuertsMixinAutomationSettings* Settings, FS
 }
 }    // namespace
 
+// ---------------------------------------------------------------------------
+// 模块生命周期
+// ---------------------------------------------------------------------------
+
 FPuertsMixinAutomationEditorModule& FPuertsMixinAutomationEditorModule::Get()
 {
     return FModuleManager::LoadModuleChecked<FPuertsMixinAutomationEditorModule>("PuertsMixinAutomationEditor");
@@ -177,10 +196,15 @@ void FPuertsMixinAutomationEditorModule::StartupModule()
 
 void FPuertsMixinAutomationEditorModule::ShutdownModule()
 {
+    // 注销顺序与 Startup 相反，确保委托与 Ticker 在模块卸载前释放
     UnregisterContentBrowserMenuExtender();
     UnregisterAssetCallbacks();
     UnregisterSettings();
 }
+
+// ---------------------------------------------------------------------------
+// 项目设置（Project Settings -> Plugins -> Puerts Mixin Automation）
+// ---------------------------------------------------------------------------
 
 void FPuertsMixinAutomationEditorModule::RegisterSettings()
 {
@@ -200,6 +224,10 @@ void FPuertsMixinAutomationEditorModule::UnregisterSettings()
         SettingsModule->UnregisterSettings("Project", "Plugins", "PuertsMixinAutomation");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 资产变更监听：Blueprint 保存后防抖刷新声明与 Mixin 索引
+// ---------------------------------------------------------------------------
 
 void FPuertsMixinAutomationEditorModule::RegisterAssetCallbacks()
 {
@@ -224,6 +252,10 @@ void FPuertsMixinAutomationEditorModule::UnregisterAssetCallbacks()
 
     PendingDeclarationSearchPaths.Reset();
 }
+
+// ---------------------------------------------------------------------------
+// 内容浏览器右键菜单：为选中 Blueprint 手动创建 Mixin 脚本
+// ---------------------------------------------------------------------------
 
 void FPuertsMixinAutomationEditorModule::RegisterContentBrowserMenuExtender()
 {
@@ -253,6 +285,7 @@ void FPuertsMixinAutomationEditorModule::UnregisterContentBrowserMenuExtender()
     ContentBrowserAssetMenuExtenderHandle.Reset();
 }
 
+/** 扩展内容浏览器资产右键菜单；仅当选中项含 BlueprintRootPath 下的 Blueprint 时追加条目 */
 TSharedRef<FExtender> FPuertsMixinAutomationEditorModule::OnExtendContentBrowserAssetSelectionMenu(
     const TArray<FAssetData>& SelectedAssets)
 {
@@ -262,6 +295,7 @@ TSharedRef<FExtender> FPuertsMixinAutomationEditorModule::OnExtendContentBrowser
         return Extender;
     }
 
+    // 挂在内置「资产操作」分组之后
     Extender->AddMenuExtension("GetAssetActions", EExtensionHook::After, nullptr,
         FMenuExtensionDelegate::CreateRaw(
             this, &FPuertsMixinAutomationEditorModule::AddCreateMixinMenuEntry, SelectedAssets));
@@ -283,6 +317,7 @@ void FPuertsMixinAutomationEditorModule::AddCreateMixinMenuEntry(
                 this, &FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets, SelectedAssets)));
 }
 
+/** 至少有一个选中资产是 BlueprintRootPath 下的 Blueprint 时才显示菜单项 */
 bool FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -302,6 +337,7 @@ bool FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets(TArray<
     return false;
 }
 
+/** 为每个符合条件的 Blueprint 生成 Mixin 文件，完成后统一刷新索引并弹出结果摘要 */
 void FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -369,6 +405,7 @@ void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetD
     QueueDeclarationRefresh(AssetData.PackagePath);
 }
 
+/** 将包路径加入待刷新集合，并启动/续期防抖 Ticker（0.25s 轮询间隔） */
 void FPuertsMixinAutomationEditorModule::QueueDeclarationRefresh(FName SearchPath)
 {
     PendingDeclarationSearchPaths.Add(SearchPath);
@@ -417,6 +454,10 @@ void FPuertsMixinAutomationEditorModule::FlushPendingDeclarationRefresh()
     GenerateMissingMixinsAndIndex();
 }
 
+// ---------------------------------------------------------------------------
+// Mixin 文件生成：扫描 Blueprint、调用 Node 模板脚本、维护索引
+// ---------------------------------------------------------------------------
+
 void FPuertsMixinAutomationEditorModule::GenerateMissingMixinsAndIndex()
 {
     const int32 CreatedCount = GenerateMissingMixinFiles();
@@ -426,6 +467,7 @@ void FPuertsMixinAutomationEditorModule::GenerateMissingMixinsAndIndex()
     UE_LOG(LogTemp, Display, TEXT("PuertsMixinAutomation generated %d missing mixin file(s)."), CreatedCount);
 }
 
+/** 按 AutoCreateMixinPolicy 扫描 Blueprint 资产，为缺失项创建 Mixin 文件 */
 int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -441,6 +483,7 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
         return 0;
     }
 
+    // ScriptedBlueprintRootPath 必须是 BlueprintRootPath 的子路径
     if (!IsUnderAssetRoot(ScanRootPath, BlueprintRootPath))
     {
         UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation ScriptedBlueprintRootPath must be under BlueprintRootPath: %s"),
@@ -451,6 +494,7 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
     IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
+    // 同步扫描确保刚保存/导入的 Blueprint 已进入资产注册表
     TArray<FString> PathsToScan;
     PathsToScan.Add(ScanRootPath);
     AssetRegistry.ScanPathsSynchronous(PathsToScan, true);
@@ -481,6 +525,10 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
     return CreatedCount;
 }
 
+/**
+ * 为单个 Blueprint 包创建对应的 Mixin .ts 文件。
+ * 输出路径：MixinSourceRoot + 相对 BlueprintRootPath 的包路径（如 Actors/BP_Test.ts）
+ */
 FPuertsMixinAutomationEditorModule::EMixinCreateResult
 FPuertsMixinAutomationEditorModule::CreateMixinFileForBlueprintPackage(
     const FString& BlueprintPackageName, bool bAllowOverwrite) const
@@ -524,6 +572,7 @@ FPuertsMixinAutomationEditorModule::CreateMixinFileForBlueprintPackage(
     return EMixinCreateResult::Failed;
 }
 
+/** 通过 Node 执行 generate-mixin-template.mjs，将 Blueprint 元数据写入 Mixin 源文件 */
 bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString& BlueprintPackageName) const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -570,6 +619,7 @@ bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString
     return true;
 }
 
+/** 递归收集 MixinSourceRoot 下所有 .ts（排除 .d.ts），生成 mixin-imports.ts 侧效 import 列表 */
 void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -587,6 +637,7 @@ void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
     MixinFiles.RemoveAll([](const FString& FilePath) { return FilePath.EndsWith(TEXT(".d.ts")); });
     MixinFiles.Sort();
 
+    // 每条 import 使用相对路径，确保从 index 文件所在目录可解析
     FString IndexSource;
     IndexSource += TEXT("// Auto-generated by PuertsMixinAutomation. Do not edit.\n");
     for (const FString& MixinFile : MixinFiles)
@@ -598,6 +649,7 @@ void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
     FFileHelper::SaveStringToFile(IndexSource, *IndexFileAbsolute, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
+/** 首次运行时创建 register.ts，仅 import mixin-imports.ts，供游戏启动时统一加载 mixin */
 void FPuertsMixinAutomationEditorModule::EnsureMixinRegisterFile() const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -607,6 +659,7 @@ void FPuertsMixinAutomationEditorModule::EnsureMixinRegisterFile() const
     }
 
     const FString RegisterFileAbsolute = ToProjectAbsolutePath(Settings->MixinRegisterPath);
+    // 已存在则不覆盖，避免破坏用户自定义的注册逻辑
     if (FPaths::FileExists(RegisterFileAbsolute))
     {
         return;
