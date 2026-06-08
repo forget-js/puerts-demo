@@ -25,8 +25,11 @@ public class PuertsMixinAutomationEditor : ModuleRules
             new string[]
             {
                 "AssetRegistry",
+                "ContentBrowser",
                 "Projects",
                 "Settings",
+                "Slate",
+                "SlateCore",
                 "UMG",
                 "UnrealEd",
             }

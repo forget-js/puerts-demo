@@ -4,6 +4,14 @@
 #include "UObject/Object.h"
 #include "PuertsMixinAutomationSettings.generated.h"
 
+UENUM()
+enum class EPuertsMixinAutoCreatePolicy : uint8
+{
+    Disabled UMETA(DisplayName = "Disabled"),
+    ScriptedRootOnly UMETA(DisplayName = "Scripted Root Only"),
+    All UMETA(DisplayName = "All Blueprints")
+};
+
 /**
  * Puerts Mixin 自动化插件的项目级配置。
  * 可在 项目设置 -> 插件 -> Puerts Mixin Automation 中编辑。
@@ -20,6 +28,10 @@ public:
     UPROPERTY(EditAnywhere, Config, Category = "Paths")
     FString BlueprintRootPath;
 
+    /** 允许自动创建 Mixin 的脚本蓝图目录（Content 路径，如 /Game/Blueprints/Scripted） */
+    UPROPERTY(EditAnywhere, Config, Category = "Paths")
+    FString ScriptedBlueprintRootPath;
+
     /** Mixin TypeScript 源文件的输出根目录（相对于项目根目录） */
     UPROPERTY(EditAnywhere, Config, Category = "Paths")
     FString MixinSourceRoot;
@@ -32,11 +44,15 @@ public:
     UPROPERTY(EditAnywhere, Config, Category = "Paths")
     FString MixinRegisterPath;
 
-    /** 为 true 时仅创建尚不存在的 mixin 文件，不覆盖已有文件 */
+    /** Mixin 模板自动创建策略；正式项目建议 Disabled，通过右键菜单显式创建 */
+    UPROPERTY(EditAnywhere, Config, Category = "Generation")
+    EPuertsMixinAutoCreatePolicy AutoCreateMixinPolicy;
+
+    /** 为 true 时仅创建尚不存在的 Mixin 文件，不覆盖已有文件 */
     UPROPERTY(EditAnywhere, Config, Category = "Generation")
     bool bCreateOnlyMissingMixins;
 
-    /** 为 true 时在 Blueprint 保存后自动生成/更新 mixin 与声明 */
+    /** 为 true 时在 Blueprint 保存后自动刷新声明与已有 Mixin 索引 */
     UPROPERTY(EditAnywhere, Config, Category = "Generation")
     bool bGenerateOnBlueprintSave;
 

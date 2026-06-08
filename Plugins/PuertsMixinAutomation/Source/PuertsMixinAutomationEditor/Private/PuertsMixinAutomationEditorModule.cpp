@@ -3,13 +3,17 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "CodeGenerator.h"
+#include "ContentBrowserModule.h"
 #include "Engine/Blueprint.h"
+#include "Framework/Commands/UIAction.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IDeclarationGenerator.h"
 #include "ISettingsModule.h"
 #include "Misc/FileHelper.h"
+#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "PuertsMixinAutomationSettings.h"
 
@@ -137,6 +141,21 @@ bool IsBlueprintAsset(const FAssetData& AssetData)
     return AssetData.AssetClass == UBlueprint::StaticClass()->GetFName();
 #endif
 }
+
+/** 根据配置决定自动创建 Mixin 模板时扫描哪个 Blueprint 根目录 */
+bool TryGetAutoCreateScanRoot(const UPuertsMixinAutomationSettings* Settings, FString& OutScanRoot)
+{
+    if (!Settings || Settings->AutoCreateMixinPolicy == EPuertsMixinAutoCreatePolicy::Disabled)
+    {
+        return false;
+    }
+
+    OutScanRoot = Settings->AutoCreateMixinPolicy == EPuertsMixinAutoCreatePolicy::All
+        ? NormalizeAssetRoot(Settings->BlueprintRootPath)
+        : NormalizeAssetRoot(Settings->ScriptedBlueprintRootPath);
+
+    return true;
+}
 }    // namespace
 
 FPuertsMixinAutomationEditorModule& FPuertsMixinAutomationEditorModule::Get()
@@ -153,10 +172,12 @@ void FPuertsMixinAutomationEditorModule::StartupModule()
 {
     RegisterSettings();
     RegisterAssetCallbacks();
+    RegisterContentBrowserMenuExtender();
 }
 
 void FPuertsMixinAutomationEditorModule::ShutdownModule()
 {
+    UnregisterContentBrowserMenuExtender();
     UnregisterAssetCallbacks();
     UnregisterSettings();
 }
@@ -202,6 +223,131 @@ void FPuertsMixinAutomationEditorModule::UnregisterAssetCallbacks()
     }
 
     PendingDeclarationSearchPaths.Reset();
+}
+
+void FPuertsMixinAutomationEditorModule::RegisterContentBrowserMenuExtender()
+{
+    FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+    TArray<FContentBrowserMenuExtender_SelectedAssets>& MenuExtenders =
+        ContentBrowserModule.GetAllAssetViewContextMenuExtenders();
+
+    MenuExtenders.Add(FContentBrowserMenuExtender_SelectedAssets::CreateRaw(
+        this, &FPuertsMixinAutomationEditorModule::OnExtendContentBrowserAssetSelectionMenu));
+    ContentBrowserAssetMenuExtenderHandle = MenuExtenders.Last().GetHandle();
+}
+
+void FPuertsMixinAutomationEditorModule::UnregisterContentBrowserMenuExtender()
+{
+    if (!ContentBrowserAssetMenuExtenderHandle.IsValid() || !FModuleManager::Get().IsModuleLoaded("ContentBrowser"))
+    {
+        return;
+    }
+
+    FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+    TArray<FContentBrowserMenuExtender_SelectedAssets>& MenuExtenders =
+        ContentBrowserModule.GetAllAssetViewContextMenuExtenders();
+
+    MenuExtenders.RemoveAll([this](const FContentBrowserMenuExtender_SelectedAssets& Delegate) {
+        return Delegate.GetHandle() == ContentBrowserAssetMenuExtenderHandle;
+    });
+    ContentBrowserAssetMenuExtenderHandle.Reset();
+}
+
+TSharedRef<FExtender> FPuertsMixinAutomationEditorModule::OnExtendContentBrowserAssetSelectionMenu(
+    const TArray<FAssetData>& SelectedAssets)
+{
+    TSharedRef<FExtender> Extender = MakeShared<FExtender>();
+    if (!CanCreateMixinForSelectedAssets(SelectedAssets))
+    {
+        return Extender;
+    }
+
+    Extender->AddMenuExtension("GetAssetActions", EExtensionHook::After, nullptr,
+        FMenuExtensionDelegate::CreateRaw(
+            this, &FPuertsMixinAutomationEditorModule::AddCreateMixinMenuEntry, SelectedAssets));
+    return Extender;
+}
+
+void FPuertsMixinAutomationEditorModule::AddCreateMixinMenuEntry(
+    FMenuBuilder& MenuBuilder, TArray<FAssetData> SelectedAssets)
+{
+    MenuBuilder.AddMenuEntry(
+        LOCTEXT("CreatePuertsMixin", "Create Puerts Mixin TS Script"),
+        LOCTEXT("CreatePuertsMixinTooltip",
+            "Generate TypeScript mixin script(s) for the selected Blueprint asset(s), then refresh the mixin import index."),
+        FSlateIcon(),
+        FUIAction(
+            FExecuteAction::CreateRaw(
+                this, &FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets, SelectedAssets),
+            FCanExecuteAction::CreateRaw(
+                this, &FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets, SelectedAssets)));
+}
+
+bool FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings)
+    {
+        return false;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    for (const FAssetData& AssetData : SelectedAssets)
+    {
+        if (IsBlueprintAsset(AssetData) && IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings)
+    {
+        return;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    int32 CreatedCount = 0;
+    int32 SkippedCount = 0;
+    int32 FailedCount = 0;
+
+    for (const FAssetData& AssetData : SelectedAssets)
+    {
+        if (!IsBlueprintAsset(AssetData) || !IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
+        {
+            ++SkippedCount;
+            continue;
+        }
+
+        const EMixinCreateResult Result =
+            CreateMixinFileForBlueprintPackage(AssetData.PackageName.ToString(), !Settings->bCreateOnlyMissingMixins);
+        if (Result == EMixinCreateResult::CreatedOrUpdated)
+        {
+            ++CreatedCount;
+        }
+        else if (Result == EMixinCreateResult::Skipped)
+        {
+            ++SkippedCount;
+        }
+        else
+        {
+            ++FailedCount;
+        }
+    }
+
+    EnsureMixinRegisterFile();
+    GenerateMixinIndex();
+
+    const FText ResultMessage = FText::Format(
+        LOCTEXT("CreatePuertsMixinResult", "Puerts Mixin generation finished.\nCreated/updated: {0}\nSkipped: {1}\nFailed: {2}"),
+        FText::AsNumber(CreatedCount),
+        FText::AsNumber(SkippedCount),
+        FText::AsNumber(FailedCount));
+    FMessageDialog::Open(FailedCount > 0 ? EAppMsgType::Ok : EAppMsgType::Ok, ResultMessage);
 }
 
 void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetData)
@@ -253,7 +399,7 @@ bool FPuertsMixinAutomationEditorModule::TickPendingDeclarationRefresh(float Del
 
 void FPuertsMixinAutomationEditorModule::FlushPendingDeclarationRefresh()
 {
-    // 先刷新 ue_bp.d.ts 等声明，再基于最新类型信息生成 mixin
+    // 先刷新 ue_bp.d.ts 等声明，再基于最新类型信息维护 Mixin 模板和索引
     if (!IDeclarationGenerator::IsAvailable())
     {
         PendingDeclarationSearchPaths.Reset();
@@ -288,18 +434,29 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
         return 0;
     }
 
-    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
-    const FString MixinRootAbsolute = ToProjectAbsolutePath(Settings->MixinSourceRoot);
+    const FString BlueprintRootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    FString ScanRootPath;
+    if (!TryGetAutoCreateScanRoot(Settings, ScanRootPath))
+    {
+        return 0;
+    }
+
+    if (!IsUnderAssetRoot(ScanRootPath, BlueprintRootPath))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation ScriptedBlueprintRootPath must be under BlueprintRootPath: %s"),
+            *ScanRootPath);
+        return 0;
+    }
 
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
     IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
     TArray<FString> PathsToScan;
-    PathsToScan.Add(RootPath);
+    PathsToScan.Add(ScanRootPath);
     AssetRegistry.ScanPathsSynchronous(PathsToScan, true);
 
     FARFilter Filter;
-    Filter.PackagePaths.Add(*RootPath);
+    Filter.PackagePaths.Add(*ScanRootPath);
     Filter.bRecursivePaths = true;
     Filter.bRecursiveClasses = true;
 #if ENGINE_MAJOR_VERSION >= 5
@@ -314,37 +471,57 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
     int32 CreatedCount = 0;
     for (const FAssetData& AssetData : BlueprintAssets)
     {
-        const FString PackageName = AssetData.PackageName.ToString();
-        const FString RelativePackagePath = MakeRelativePackagePath(PackageName, RootPath);
-        if (RelativePackagePath.IsEmpty())
-        {
-            continue;
-        }
-
-        const FString MixinFileAbsolute = MixinRootAbsolute / (RelativePackagePath + TEXT(".ts"));
-        if (Settings->bCreateOnlyMissingMixins && FPaths::FileExists(MixinFileAbsolute))
-        {
-            continue;
-        }
-
-        // 先创建空文件占位，再由 Node 脚本写入完整模板内容
-        IFileManager::Get().MakeDirectory(*FPaths::GetPath(MixinFileAbsolute), true);
-        if (!FFileHelper::SaveStringToFile(TEXT(""), *MixinFileAbsolute, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
-        {
-            continue;
-        }
-
-        if (RunMixinTemplateGenerator(PackageName))
+        if (CreateMixinFileForBlueprintPackage(AssetData.PackageName.ToString(), !Settings->bCreateOnlyMissingMixins)
+            == EMixinCreateResult::CreatedOrUpdated)
         {
             ++CreatedCount;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation failed to generate mixin template for %s"), *PackageName);
         }
     }
 
     return CreatedCount;
+}
+
+FPuertsMixinAutomationEditorModule::EMixinCreateResult
+FPuertsMixinAutomationEditorModule::CreateMixinFileForBlueprintPackage(
+    const FString& BlueprintPackageName, bool bAllowOverwrite) const
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings)
+    {
+        return EMixinCreateResult::Failed;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    if (!IsUnderAssetRoot(BlueprintPackageName, RootPath))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation Blueprint is outside BlueprintRootPath: %s"),
+            *BlueprintPackageName);
+        return EMixinCreateResult::Skipped;
+    }
+
+    const FString RelativePackagePath = MakeRelativePackagePath(BlueprintPackageName, RootPath);
+    if (RelativePackagePath.IsEmpty())
+    {
+        return EMixinCreateResult::Skipped;
+    }
+
+    const FString MixinRootAbsolute = ToProjectAbsolutePath(Settings->MixinSourceRoot);
+    const FString MixinFileAbsolute = MixinRootAbsolute / (RelativePackagePath + TEXT(".ts"));
+    if (!bAllowOverwrite && FPaths::FileExists(MixinFileAbsolute))
+    {
+        UE_LOG(LogTemp, Display, TEXT("PuertsMixinAutomation mixin already exists: %s"), *MixinFileAbsolute);
+        return EMixinCreateResult::Skipped;
+    }
+
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(MixinFileAbsolute), true);
+    if (RunMixinTemplateGenerator(BlueprintPackageName))
+    {
+        return EMixinCreateResult::CreatedOrUpdated;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation failed to generate mixin template for %s"),
+        *BlueprintPackageName);
+    return EMixinCreateResult::Failed;
 }
 
 bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString& BlueprintPackageName) const

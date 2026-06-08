@@ -155,10 +155,8 @@ function makeLifecycleBody(kind) {
       '    ReceiveBeginPlay(): void {',
       '    }',
       '',
-      '    ReceiveTick(DeltaSeconds: number): void {',
-      '    }',
-      '',
       '    ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {',
+      '        clearMixinRuntimeState(this);',
       '    }',
     ].join('\n');
   }
@@ -167,7 +165,7 @@ function makeLifecycleBody(kind) {
 }
 
 /** 组装完整的 mixin 源文件内容 */
-function buildMixinSource({ packageName, assetName, lifecycleKind }) {
+function buildMixinSource({ packageName, assetName, lifecycleKind, runtimeImportPath }) {
   const classPath = `${packageName}.${assetName}_C`;
   const typeNamespace = makeTypeScriptNamespace(packageName);
   const generatedClassName = filenameToTypeScriptVariableName(`${assetName}_C`);
@@ -177,6 +175,7 @@ function buildMixinSource({ packageName, assetName, lifecycleKind }) {
   return [
     "import * as UE from 'ue';",
     "import { blueprint } from 'puerts';",
+    `import { clearMixinRuntimeState, getMixinRuntimeState } from '${runtimeImportPath}';`,
     '',
     `const uclass = UE.Class.Load("${classPath}");`,
     `const jsClass = blueprint.tojs<typeof ${typePath}>(uclass);`,
@@ -220,6 +219,10 @@ if (!relativePackagePath) {
 
 const outputFile = path.resolve(projectRoot, mixinRoot, `${relativePackagePath}.ts`);
 const generatedClassName = filenameToTypeScriptVariableName(`${assetName}_C`);
+let runtimeImportPath = path.relative(path.dirname(outputFile), path.resolve(projectRoot, 'TypeScript/Runtime')).replace(/\\/g, '/');
+if (!runtimeImportPath.startsWith('.')) {
+  runtimeImportPath = `./${runtimeImportPath}`;
+}
 
 let lifecycleKind = 'other';
 if (fs.existsSync(bpDeclarationFile)) {
@@ -236,6 +239,7 @@ const source = buildMixinSource({
   packageName: normalizedBlueprint,
   assetName,
   lifecycleKind,
+  runtimeImportPath,
 });
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });
