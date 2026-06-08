@@ -5,6 +5,7 @@
  */
 
 import * as UE from 'ue';
+import { $ref } from 'puerts';
 
 import { Config } from '../Config/Config';
 import { ScriptBuildInfo } from '../Runtime';
@@ -28,6 +29,11 @@ export interface LogOptions {
     duration?: number;
     color?: UE.LinearColor;
     key?: string;
+}
+
+export interface SetActorLocationOptions {
+    readonly sweep?: boolean;
+    readonly teleport?: boolean;
 }
 
 /** Actor 便捷重载用，worldContext 由第一个参数传入 */
@@ -122,6 +128,10 @@ function Log(message: string, options: LogOptions = {}): void {
 }
 
 export interface GlobalFunction {
+    GetActorLocation(actor: UE.Actor): UE.Vector;
+
+    SetActorLocation(actor: UE.Actor, location: UE.Vector, options?: SetActorLocationOptions): boolean;
+
     /** 仅 Output Log */
     Log(message: string, options?: LogOptions): void;
 
@@ -135,6 +145,19 @@ export interface GlobalFunction {
 }
 
 export const GF: GlobalFunction = {
+    GetActorLocation(actor: UE.Actor): UE.Vector {
+        return actor.K2_GetActorLocation();
+    },
+
+    SetActorLocation(actor: UE.Actor, location: UE.Vector, options: SetActorLocationOptions = {}): boolean {
+        return actor.K2_SetActorLocation(
+            location,
+            options.sweep ?? false,
+            $ref<UE.HitResult>(),
+            options.teleport ?? true
+        );
+    },
+
     Log(
         arg0: string | UE.Object,
         arg1?: string | LogOptions | LogOptionsWithoutContext,
