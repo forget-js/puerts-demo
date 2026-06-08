@@ -3,10 +3,12 @@
 #include "Containers/Ticker.h"
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "UObject/ObjectSaveContext.h"
 
 struct FAssetData;
 class FExtender;
 class FMenuBuilder;
+class UPackage;
 
 /**
  * Puerts Mixin 自动化编辑器模块。
@@ -43,6 +45,8 @@ private:
 
     /** 资产注册表回调：Blueprint 更新时入队等待刷新 */
     void OnAssetUpdated(const FAssetData& AssetData);
+    /** 包保存回调：覆盖仅保存 Blueprint 内容但资产注册表未更新的情况 */
+    void OnPackageSaved(const FString& PackageFileName, UPackage* Package, FObjectPostSaveContext ObjectSaveContext);
     /** 防抖 Ticker：延迟执行声明刷新与 mixin 索引维护 */
     bool TickPendingDeclarationRefresh(float DeltaTime);
     void QueueDeclarationRefresh(FName SearchPath);
@@ -65,6 +69,7 @@ private:
     void ExecuteCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const;
 
     FDelegateHandle AssetUpdatedHandle;
+    FDelegateHandle PackageSavedHandle;
     FDelegateHandle ContentBrowserAssetMenuExtenderHandle;
     FTSTicker::FDelegateHandle TickerHandle;
     /** 待刷新的资产包路径集合（合并多次保存） */

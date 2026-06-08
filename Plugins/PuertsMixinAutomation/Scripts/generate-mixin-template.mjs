@@ -11,6 +11,9 @@ import path from 'node:path';
 
 const args = process.argv.slice(2);
 
+/** 与 Mixin 示例文件一致的区块分隔线 */
+const SECTION_BORDER = '// ===========================================================================';
+
 /** 从命令行读取 --name=value 参数 */
 function readArg(name, fallback) {
   const prefix = `--${name}=`;
@@ -148,20 +151,52 @@ function resolveLifecycleKind(bpDtsContent, ueDtsContent, className) {
   return 'other';
 }
 
-/** 根据生命周期类别生成 ReceiveBeginPlay/Tick/EndPlay 或通用占位注释 */
+/** 生成与示例 Mixin 一致的区块标题 (含上下分隔线). */
+function makeSectionHeader(title, indent = '') {
+  const innerWidth = 75;
+  const padding = Math.max(1, Math.floor((innerWidth - [...title].length) / 2));
+  return [
+    `${indent}${SECTION_BORDER}`,
+    `${indent}//${' '.repeat(padding)}${title}`,
+    `${indent}${SECTION_BORDER}`,
+  ].join('\n');
+}
+
+/** 生成文件头模块说明 (见 TypeScript/Doc/CodeFormat.md §4.1). */
+function makeModuleHeader(assetName) {
+  return [
+    '/**',
+    ` * [模块说明] ${assetName}: TODO 填写本模块处理的业务.`,
+    ' * TODO  1. ReceiveBeginPlay 初始化',
+    ' * TODO  2. ReceiveEndPlay 清理运行时状态',
+    ' */',
+  ].join('\n');
+}
+
+/** 根据生命周期类别生成 ReceiveBeginPlay / ReceiveEndPlay 样板. */
 function makeLifecycleBody(kind) {
   if (kind === 'actor' || kind === 'component') {
     return [
       '    ReceiveBeginPlay(): void {',
       '    }',
       '',
+      '    /** 必须清理定时器与委托, 避免 EndPlay 后仍触发回调. */',
       '    ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {',
       '        clearMixinRuntimeState(this);',
       '    }',
     ].join('\n');
   }
 
-  return '    // Add Blueprint event overrides here.';
+  return [
+    '    // 未能从 ue_bp.d.ts 推断生命周期; 按需取消注释并实现:',
+    '    // ReceiveBeginPlay(): void {',
+    '    // }',
+    '',
+    '    // /** 必须清理定时器与委托, 避免 EndPlay 后仍触发回调. */',
+    '    // ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {',
+    '    //     clearMixinRuntimeState(this);',
+    '    // }',
+  ].join('\n');
 }
 
 /** 组装完整的 mixin 源文件内容 */
@@ -171,23 +206,67 @@ function buildMixinSource({ packageName, assetName, lifecycleKind, runtimeImport
   const generatedClassName = filenameToTypeScriptVariableName(`${assetName}_C`);
   const typePath = `UE.${typeNamespace}.${generatedClassName}`;
   const mixinClassName = filenameToTypeScriptVariableName(`${assetName}Mixin`);
+  const runtimeStateInterfaceName = `${assetName}RuntimeState`;
 
-  return [
+  const sections = [
+    makeModuleHeader(assetName),
     "import * as UE from 'ue';",
     "import { blueprint } from 'puerts';",
-    `import { clearMixinRuntimeState, getMixinRuntimeState } from '${runtimeImportPath}';`,
+    `import {`,
+    `    clearMixinRuntimeState,`,
+    `    getMixinRuntimeState,`,
+    `    type MixinRuntimeState,`,
+    `} from '${runtimeImportPath}';`,
+    '',
+    '',
+    makeSectionHeader('配置常量'),
+    '',
+    '// 模块级常量在此定义, 如 const ORBIT_ANGULAR_SPEED = Math.PI / 2;',
+    '',
+    '',
+    makeSectionHeader('运行时状态'),
+    '',
+    '// 需要自定义运行时状态时, 扩展 MixinRuntimeState 并在此声明 interface:',
+    '//',
+    `// interface ${runtimeStateInterfaceName} extends MixinRuntimeState {`,
+    '//     /** 示例字段 */',
+    '//     example?: unknown;',
+    '// }',
+    '',
+    '',
+    makeSectionHeader('Blueprint Mixin 绑定'),
     '',
     `const uclass = UE.Class.Load("${classPath}");`,
     `const jsClass = blueprint.tojs<typeof ${typePath}>(uclass);`,
     '',
     `interface ${mixinClassName} extends ${typePath} { }`,
     `class ${mixinClassName} implements ${mixinClassName} {`,
+    '',
+    makeSectionHeader('生命周期函数', '    '),
+    '',
     makeLifecycleBody(lifecycleKind),
+    '',
+    '',
+    makeSectionHeader('状态访问方法', '    '),
+    '',
+    '    // Puerts Mixin 不保证 TS class 字段初始化; 对象级状态请通过 getMixinRuntimeState(this) 管理.',
+    '    //',
+    `    // private getRuntimeState(): ${runtimeStateInterfaceName} {`,
+    `    //     return getMixinRuntimeState(this) as ${runtimeStateInterfaceName};`,
+    '    // }',
+    '',
+    '',
+    makeSectionHeader('私有方法', '    '),
+    '',
+    '    // 监听回调、定时器回调、Overlap 处理等私有方法在此添加.',
     '}',
+    '',
     '',
     `blueprint.mixin(jsClass, ${mixinClassName});`,
     '',
-  ].join('\n');
+  ];
+
+  return sections.join('\n');
 }
 
 // --- 主流程 ---

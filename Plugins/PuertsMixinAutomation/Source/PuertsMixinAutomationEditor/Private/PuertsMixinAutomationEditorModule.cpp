@@ -13,9 +13,11 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "CodeGenerator.h"
 #include "ContentBrowserModule.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "HAL/FileManager.h"
@@ -25,8 +27,11 @@
 #include "ISettingsModule.h"
 #include "Misc/FileHelper.h"
 #include "Misc/MessageDialog.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "PuertsMixinAutomationSettings.h"
+#include "UObject/Package.h"
+#include "UObject/UObjectGlobals.h"
 
 #define LOCTEXT_NAMESPACE "FPuertsMixinAutomationEditorModule"
 
@@ -147,14 +152,24 @@ FString MakeImportPath(const FString& FromDirectory, const FString& ToFile)
     return RelativePath;
 }
 
-/** 兼容 UE4/UE5 资产类名判断：是否为 Blueprint 资产 */
-bool IsBlueprintAsset(const FAssetData& AssetData)
+/** Puerts mixin 原生实现处理 BlueprintGeneratedClass，并对 WidgetBlueprintGeneratedClass 有专门分支 */
+bool IsPuertsMixinSupportedGeneratedClass(const UClass* GeneratedClass)
 {
-#if ENGINE_MAJOR_VERSION >= 5
-    return AssetData.AssetClassPath == UBlueprint::StaticClass()->GetClassPathName();
-#else
-    return AssetData.AssetClass == UBlueprint::StaticClass()->GetFName();
-#endif
+    return GeneratedClass
+        && (Cast<UBlueprintGeneratedClass>(GeneratedClass) || Cast<UWidgetBlueprintGeneratedClass>(GeneratedClass));
+}
+
+/** 判断资产是否为可被 Puerts blueprint.mixin 处理的 Blueprint 资产 */
+bool IsPuertsMixinSupportedBlueprintAsset(const FAssetData& AssetData)
+{
+    const UClass* AssetClass = AssetData.GetClass();
+    if (!AssetClass || !AssetClass->IsChildOf(UBlueprint::StaticClass()))
+    {
+        return false;
+    }
+
+    const UBlueprint* Blueprint = Cast<UBlueprint>(AssetData.GetAsset());
+    return Blueprint && IsPuertsMixinSupportedGeneratedClass(Blueprint->GeneratedClass);
 }
 
 /** 根据配置决定自动创建 Mixin 模板时扫描哪个 Blueprint 根目录 */
@@ -233,10 +248,17 @@ void FPuertsMixinAutomationEditorModule::RegisterAssetCallbacks()
 {
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
     AssetUpdatedHandle = AssetRegistryModule.Get().OnAssetUpdated().AddRaw(this, &FPuertsMixinAutomationEditorModule::OnAssetUpdated);
+    PackageSavedHandle = UPackage::PackageSavedWithContextEvent.AddRaw(this, &FPuertsMixinAutomationEditorModule::OnPackageSaved);
 }
 
 void FPuertsMixinAutomationEditorModule::UnregisterAssetCallbacks()
 {
+    if (PackageSavedHandle.IsValid())
+    {
+        UPackage::PackageSavedWithContextEvent.Remove(PackageSavedHandle);
+        PackageSavedHandle.Reset();
+    }
+
     if (AssetUpdatedHandle.IsValid() && FModuleManager::Get().IsModuleLoaded("AssetRegistry"))
     {
         FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -285,7 +307,7 @@ void FPuertsMixinAutomationEditorModule::UnregisterContentBrowserMenuExtender()
     ContentBrowserAssetMenuExtenderHandle.Reset();
 }
 
-/** 扩展内容浏览器资产右键菜单；仅当选中项含 BlueprintRootPath 下的 Blueprint 时追加条目 */
+/** 扩展内容浏览器资产右键菜单；仅当选中项含 BlueprintRootPath 下且 Puerts 支持 mixin 的 Blueprint 资产时追加条目 */
 TSharedRef<FExtender> FPuertsMixinAutomationEditorModule::OnExtendContentBrowserAssetSelectionMenu(
     const TArray<FAssetData>& SelectedAssets)
 {
@@ -317,7 +339,7 @@ void FPuertsMixinAutomationEditorModule::AddCreateMixinMenuEntry(
                 this, &FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets, SelectedAssets)));
 }
 
-/** 至少有一个选中资产是 BlueprintRootPath 下的 Blueprint 时才显示菜单项 */
+/** 至少有一个选中资产是 BlueprintRootPath 下且 Puerts 支持 mixin 的 Blueprint 资产时才显示菜单项 */
 bool FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const
 {
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
@@ -329,7 +351,7 @@ bool FPuertsMixinAutomationEditorModule::CanCreateMixinForSelectedAssets(TArray<
     const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
     for (const FAssetData& AssetData : SelectedAssets)
     {
-        if (IsBlueprintAsset(AssetData) && IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
+        if (IsPuertsMixinSupportedBlueprintAsset(AssetData) && IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
         {
             return true;
         }
@@ -353,7 +375,7 @@ void FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets(TAr
 
     for (const FAssetData& AssetData : SelectedAssets)
     {
-        if (!IsBlueprintAsset(AssetData) || !IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
+        if (!IsPuertsMixinSupportedBlueprintAsset(AssetData) || !IsUnderAssetRoot(AssetData.PackageName.ToString(), RootPath))
         {
             ++SkippedCount;
             continue;
@@ -388,9 +410,9 @@ void FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets(TAr
 
 void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetData)
 {
-    // 仅处理配置根路径下的 Blueprint 保存事件
+    // 仅处理配置根路径下且 Puerts 支持 mixin 的 Blueprint 保存事件
     const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
-    if (!Settings || !Settings->bGenerateOnBlueprintSave || !IsBlueprintAsset(AssetData))
+    if (!Settings || !Settings->bGenerateOnBlueprintSave || !IsPuertsMixinSupportedBlueprintAsset(AssetData))
     {
         return;
     }
@@ -403,6 +425,33 @@ void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetD
     }
 
     QueueDeclarationRefresh(AssetData.PackagePath);
+}
+
+void FPuertsMixinAutomationEditorModule::OnPackageSaved(
+    const FString& /*PackageFileName*/, UPackage* Package, FObjectPostSaveContext /*ObjectSaveContext*/)
+{
+    // UMG 控件树等内容保存不一定触发 AssetRegistry.OnAssetUpdated，包保存回调作为主兜底。
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings || !Settings->bGenerateOnBlueprintSave || !Package)
+    {
+        return;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    const FString PackageName = Package->GetName();
+    if (!IsUnderAssetRoot(PackageName, RootPath))
+    {
+        return;
+    }
+
+    const FString AssetName = FPackageName::GetLongPackageAssetName(PackageName);
+    const UBlueprint* Blueprint = FindObject<UBlueprint>(Package, *AssetName);
+    if (!Blueprint || !IsPuertsMixinSupportedGeneratedClass(Blueprint->GeneratedClass))
+    {
+        return;
+    }
+
+    QueueDeclarationRefresh(*FPackageName::GetLongPackagePath(PackageName));
 }
 
 /** 将包路径加入待刷新集合，并启动/续期防抖 Ticker（0.25s 轮询间隔） */
@@ -515,6 +564,11 @@ int32 FPuertsMixinAutomationEditorModule::GenerateMissingMixinFiles() const
     int32 CreatedCount = 0;
     for (const FAssetData& AssetData : BlueprintAssets)
     {
+        if (!IsPuertsMixinSupportedBlueprintAsset(AssetData))
+        {
+            continue;
+        }
+
         if (CreateMixinFileForBlueprintPackage(AssetData.PackageName.ToString(), !Settings->bCreateOnlyMissingMixins)
             == EMixinCreateResult::CreatedOrUpdated)
         {
