@@ -9,15 +9,24 @@ import { blueprint } from 'puerts';
 import { GF } from '../../../Global';
 import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 
+
+
+// ===========================================================================
+//                           Blueprint Mixin 绑定
+// ===========================================================================
+
 const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Actor.BP_Actor_C");
 const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C>(uclass);
 
 interface BP_ActorMixin extends UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C { }
 class BP_ActorMixin implements BP_ActorMixin {
 
+    // ===========================================================================
+    //                                生命周期函数
+    // ===========================================================================
+
     // 只要override，蓝图侧的实现就会被覆盖，哪怕这里没有逻辑
     ReceiveBeginPlay(): void {
-
         const state = getMixinRuntimeState(this);
 
         // 一次性：5 秒后执行一次（类似蓝图 Delay）
@@ -30,17 +39,20 @@ class BP_ActorMixin implements BP_ActorMixin {
         state.delegates.bind(this.Sphere1.OnComponentBeginOverlap, this, this.onSphereBeginOverlap);
         state.delegates.bind(this.Sphere1.OnComponentEndOverlap, this, this.onSphereEndOverlap);
 
-
         // 调用蓝图中的函数
         this.BP_Print("来自ts的文本");
     }
-
 
     /** 必须清理定时器与委托, 避免 EndPlay 后仍触发回调. */
     ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
         clearMixinRuntimeState(this);
     }
 
+
+
+    // ===========================================================================
+    //                                  私有方法
+    // ===========================================================================
 
     private onSphereBeginOverlap(
         OverlappedComponent: UE.PrimitiveComponent | null,
@@ -54,6 +66,7 @@ class BP_ActorMixin implements BP_ActorMixin {
             GF.Log(this, `触碰物体: ${OtherActor.GetName()}`);
         }
     }
+
     private onSphereEndOverlap(
         OverlappedComponent: UE.PrimitiveComponent | null,
         OtherActor: UE.Actor | null,
@@ -65,7 +78,6 @@ class BP_ActorMixin implements BP_ActorMixin {
         }
     }
 
-
     private onBeginPlayDelayedLog(): void {
         GF.Log(this, 'BeginPlay 延迟 5 秒后的日志');
     }
@@ -73,8 +85,8 @@ class BP_ActorMixin implements BP_ActorMixin {
     private onPeriodicTick(): void {
         GF.Log(this, '每隔 5 秒定时调用');
     }
-
-
 }
+
+
 
 blueprint.mixin(jsClass, BP_ActorMixin);
