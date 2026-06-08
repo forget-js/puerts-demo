@@ -1,6 +1,13 @@
+/**
+ * 全局函数 GF: 统一日志入口.
+ *
+ * Mixin 中通过 `import { GF, GE } from '.../Global'` 使用; 阈值与上屏行为由 Config.log 控制.
+ */
+
 import * as UE from 'ue';
 
 import { Config } from '../Config/Config';
+import { ScriptBuildInfo } from '../Runtime';
 import { LogLevel } from './Enums';
 
 const LEVEL_LABEL = ['Verbose', 'Log', 'Warning', 'Error'] as const;
@@ -30,6 +37,7 @@ function normalizeLevel(level?: LogLevel): LogLevel {
     return level !== undefined && LEVEL_LABEL[level] !== undefined ? level : LogLevel.Log;
 }
 
+/** module 在 Config.log.moduleMinLevel 中有条目时, 以模块阈值为准, 否则用 globalMinLevel. */
 function shouldLog(level: LogLevel, module?: string): boolean {
     const min =
         module !== undefined && Config.log.moduleMinLevel[module] !== undefined
@@ -42,9 +50,15 @@ function shouldLog(level: LogLevel, module?: string): boolean {
 function formatLogMessage(message: string, level: LogLevel, module?: string): string {
     const body = message.replace(/-{4,}/g, (match) => '='.repeat(match.length));
     const label = LEVEL_LABEL[level] ?? 'Log';
-    const prefix = module ? `[${module}][${label}] ` : `[${label}] `;
+    const context = [
+        Config.app.environment,
+        ScriptBuildInfo.version,
+        module,
+        label,
+    ].filter((item): item is string => typeof item === 'string' && item.length > 0);
+    const prefix = context.map((item) => `[${item}]`).join('');
 
-    return level === LogLevel.Error ? `${prefix}Error: ${body}` : `${prefix}${body}`;
+    return level === LogLevel.Error ? `${prefix} Error: ${body}` : `${prefix} ${body}`;
 }
 
 function resolveLogTargets(options: LogOptions): { toScreen: boolean; toLog: boolean } {
@@ -53,7 +67,7 @@ function resolveLogTargets(options: LogOptions): { toScreen: boolean; toLog: boo
     // Mixin 常见调用 GF.Log(this, '...')：默认同时打到屏幕和日志。
     // 无 worldContext 时，默认仅输出控制台，避免无效 PrintString 调用。
     return {
-        toScreen: options.toScreen ?? hasWorldContext,
+        toScreen: options.toScreen ?? (hasWorldContext && Config.log.showScreenLogs),
         toLog: options.toLog ?? true,
     };
 }
@@ -97,8 +111,8 @@ function Log(message: string, options: LogOptions = {}): void {
     const { toScreen, toLog } = resolveLogTargets(options);
 
     if (toScreen) {
-        const color = new UE.LinearColor(0, 0.66, 1, 1);
-        UE.KismetSystemLibrary.PrintString(options.worldContext ?? null, formatted, true, true, color, 2);
+        const color = options.color ?? new UE.LinearColor(0, 0.66, 1, 1);
+        UE.KismetSystemLibrary.PrintString(options.worldContext ?? null, formatted, true, toLog, color, options.duration ?? 2);
         return;
     }
 

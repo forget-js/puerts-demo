@@ -6,8 +6,12 @@ import type { AppConfig } from './config.default';
  * 全局调高阈值可减少刷屏；对单个 module 单独放宽便于调试当前 Mixin。
  */
 export const configDev: Partial<AppConfig> = {
+    app: {
+        environment: 'Development',
+    },
     log: {
         globalMinLevel: LogLevel.Error,
+        showScreenLogs: true,
         moduleMinLevel: {
             'Mixins/Blueprints/Actors/BP_Actor': LogLevel.Verbose,
         },

@@ -1,6 +1,13 @@
+/**
+ * [示例] BP_Actor: 定时器、委托绑定与蓝图函数调用演示.
+ * DONE  1. ReceiveBeginPlay 注册 TimerBag / DelegateBag
+ * DONE  2. Overlap 回调与 GF.Log
+ * DONE  3. ReceiveEndPlay 清理运行时状态
+ */
 import * as UE from 'ue';
 import { blueprint } from 'puerts';
 import { GF } from '../../../Global';
+import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 
 const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Actor.BP_Actor_C");
 const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C>(uclass);
@@ -8,26 +15,20 @@ const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Acto
 interface BP_ActorMixin extends UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C { }
 class BP_ActorMixin implements BP_ActorMixin {
 
-    /** 一次性延迟（类似蓝图 Delay） */
-    private beginPlayDelayTimerId?: number;
-
-    /** 循环定时（类似蓝图 Set Timer，Looping = true） */
-    private periodicTimerId?: number;
-
-
-
+    // 只要override，蓝图侧的实现就会被覆盖，哪怕这里没有逻辑
     ReceiveBeginPlay(): void {
-        // 只要override，蓝图侧的实现就会被覆盖，哪怕这里没有逻辑
+
+        const state = getMixinRuntimeState(this);
 
         // 一次性：5 秒后执行一次（类似蓝图 Delay）
-        this.beginPlayDelayTimerId = setTimeout(this.onBeginPlayDelayedLog.bind(this), 5000);
+        state.timers.setTimeout(this.onBeginPlayDelayedLog.bind(this), 5000);
 
         // 循环：每隔 5 秒执行一次（类似蓝图 Set Timer，Time=5，Looping=true）
-        this.periodicTimerId = setInterval(this.onPeriodicTick.bind(this), 5000);
+        state.timers.setInterval(this.onPeriodicTick.bind(this), 5000);
 
         // 运行时绑定组件重叠（类似 C++ 里 Sphere1->OnComponentBeginOverlap.AddDynamic）
-        this.Sphere1.OnComponentBeginOverlap.Add(this.onSphereBeginOverlap.bind(this));
-        this.Sphere1.OnComponentEndOverlap.Add(this.onSphereEndOverlap.bind(this));
+        state.delegates.bind(this.Sphere1.OnComponentBeginOverlap, this, this.onSphereBeginOverlap);
+        state.delegates.bind(this.Sphere1.OnComponentEndOverlap, this, this.onSphereEndOverlap);
 
 
         // 调用蓝图中的函数
@@ -35,20 +36,9 @@ class BP_ActorMixin implements BP_ActorMixin {
     }
 
 
+    /** 必须清理定时器与委托, 避免 EndPlay 后仍触发回调. */
     ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
-        if (this.beginPlayDelayTimerId !== undefined) {
-            clearTimeout(this.beginPlayDelayTimerId);
-            this.beginPlayDelayTimerId = undefined;
-        }
-        if (this.periodicTimerId !== undefined) {
-            clearInterval(this.periodicTimerId);
-            this.periodicTimerId = undefined;
-        }
-    }
-
-
-    ReceiveTick(DeltaSeconds: number): void {
-        // 如果需要tick生效，蓝图侧需要随便连个节点
+        clearMixinRuntimeState(this);
     }
 
 
