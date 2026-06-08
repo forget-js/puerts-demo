@@ -14,23 +14,58 @@ export interface MixinRuntimeState {
     readonly timers: TimerBag;
 }
 
-// WeakMap: owner 被 GC 后条目自动释放, 避免全局 Map 长期持有已销毁 Actor.
+type UnrealObjectLike = object & {
+    GetPathName?: () => string;
+    GetName?: () => string;
+};
+
+// Puerts 可能为同一个 UObject 生成不同 JS wrapper, 因此 UObject 状态必须使用稳定字符串 key。
+const mixinStatesByObjectKey = new Map<string, MixinRuntimeState>();
+
+// 普通 JS 对象仍使用 WeakMap, 避免全局 Map 长期持有已销毁对象.
 const mixinStates = new WeakMap<object, MixinRuntimeState>();
+
+function getStableObjectKey(owner: object): string | undefined {
+    const unrealObject = owner as UnrealObjectLike;
+    const pathName = unrealObject.GetPathName?.();
+    if (pathName) {
+        return pathName;
+    }
+
+    const name = unrealObject.GetName?.();
+    return name ? `name:${name}` : undefined;
+}
+
+function createMixinRuntimeState(): MixinRuntimeState {
+    return {
+        delegates: new DelegateBag(),
+        timers: new TimerBag(),
+    };
+}
 
 /**
  * 获取或懒创建 owner 的运行时状态.
  * @param owner Mixin 实例, 一般传 this.
  */
 export function getMixinRuntimeState(owner: object): MixinRuntimeState {
+    const objectKey = getStableObjectKey(owner);
+    if (objectKey) {
+        let state = mixinStatesByObjectKey.get(objectKey);
+        if (state) {
+            return state;
+        }
+
+        state = createMixinRuntimeState();
+        mixinStatesByObjectKey.set(objectKey, state);
+        return state;
+    }
+
     let state = mixinStates.get(owner);
     if (state) {
         return state;
     }
 
-    state = {
-        delegates: new DelegateBag(),
-        timers: new TimerBag(),
-    };
+    state = createMixinRuntimeState();
     mixinStates.set(owner, state);
     return state;
 }
@@ -40,12 +75,19 @@ export function getMixinRuntimeState(owner: object): MixinRuntimeState {
  * @param owner 与 getMixinRuntimeState 传入的同一实例.
  */
 export function clearMixinRuntimeState(owner: object): void {
-    const state = mixinStates.get(owner);
+    const objectKey = getStableObjectKey(owner);
+    const state = objectKey ? mixinStatesByObjectKey.get(objectKey) : mixinStates.get(owner);
     if (!state) {
         return;
     }
 
     state.delegates.clear();
     state.timers.clearAll();
+
+    if (objectKey) {
+        mixinStatesByObjectKey.delete(objectKey);
+        return;
+    }
+
     mixinStates.delete(owner);
 }
