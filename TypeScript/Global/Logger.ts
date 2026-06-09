@@ -9,8 +9,10 @@ import * as UE from 'ue';
 import { Config } from '../Config/Config';
 import { LogLevel } from './Enums';
 
+/** 与 LogLevel 枚举下标一一对应的输出标签 */
 const LEVEL_LABEL = ['Verbose', 'Log', 'Warning', 'Error'] as const;
 
+/** 各日志级别对应的控制台输出函数 */
 const CONSOLE_BY_LEVEL: Record<LogLevel, (message: string) => void> = {
     [LogLevel.Verbose]: (message) => console.log(message),
     [LogLevel.Log]: (message) => console.log(message),
@@ -18,6 +20,7 @@ const CONSOLE_BY_LEVEL: Record<LogLevel, (message: string) => void> = {
     [LogLevel.Error]: (message) => console.error(message),
 };
 
+/** UE PrintString 屏幕输出时各级别默认颜色 */
 const SCREEN_COLOR_BY_LEVEL: Record<LogLevel, UE.LinearColor> = {
     [LogLevel.Verbose]: new UE.LinearColor(0.5, 0.5, 0.5, 1),
     [LogLevel.Log]: new UE.LinearColor(0, 0.66, 1, 1),
@@ -25,34 +28,54 @@ const SCREEN_COLOR_BY_LEVEL: Record<LogLevel, UE.LinearColor> = {
     [LogLevel.Error]: new UE.LinearColor(1, 0.1, 0.1, 1),
 };
 
+/** Actor/类实例 → 已注册的日志上下文，随对象 GC 自动释放 */
 const registeredLogContexts = new WeakMap<object, RegisteredLogContext>();
+/** once 去重：已输出过的日志 key 集合，进程生命周期内不重置 */
 const onceLogKeys = new Set<string>();
+/** 限流去重：key → 上次输出时间戳 (ms)，进程生命周期内不重置 */
 const rateLimitedLogTimes = new Map<string, number>();
 
+/** 通过 registerLogContext / bindLogContext 绑定的日志上下文 */
 export interface RegisteredLogContext {
+    /** 显示在日志前缀中的名称，如 Actor 类名 */
     readonly displayName: string;
+    /** 模块名，用于 Config.log.moduleMinLevel 分级过滤 */
     readonly module?: string;
 }
 
+/** emitLog / GF.Log 的可选参数，均可与 registerLogContext 注册的默认值叠加 */
 export interface LogOptions {
+    /** 未指定时默认为 LogLevel.Log */
     level?: LogLevel;
+    /** 传入 UE.Object 时启用屏幕输出并作为 PrintString 的 world context */
     worldContext?: UE.Object | null;
+    /** 是否输出到 UE 屏幕，默认有 worldContext 且非 Shipping 时开启 */
     toScreen?: boolean;
+    /** 是否输出到控制台，默认 true */
     toLog?: boolean;
+    /** 覆盖模块名，参与分级过滤与去重 key 生成 */
     module?: string;
+    /** 覆盖显示名，出现在 `[Level] [displayName]` 前缀中 */
     displayName?: string;
+    /** 附加结构化数据，序列化后追加到消息末尾 */
     context?: Record<string, unknown>;
+    /** 附加错误对象，Error 优先输出 stack */
     error?: unknown;
+    /** PrintString 屏幕显示时长 (秒)，默认 2 */
     duration?: number;
     color?: UE.LinearColor;
+    /** 去重/限流用的自定义 key，默认使用 message */
     key?: string;
+    /** 同一 key 的最小输出间隔 (秒)，未指定时用 Config.log.rateLimitDefaults */
     rateLimitSeconds?: number;
+    /** 同一 key 生命周期内只输出一次 */
     once?: boolean;
 }
 
 /** Actor 便捷重载用，worldContext 由第一个参数传入 */
 export type LogOptionsWithoutContext = Omit<LogOptions, 'worldContext'>;
 
+/** createLogger 返回的具名日志器，自动填充 displayName / module */
 export interface Logger {
     Log(message: string, options?: LogOptions): void;
     Verbose(message: string, options?: LogOptions): void;
@@ -60,11 +83,13 @@ export interface Logger {
     Error(message: string, options?: LogOptions): void;
 }
 
+/** 支持 (message, options?) 与 (worldContext, message, options?) 两种调用形态 */
 export interface LevelLogFunction {
     (message: string, options?: LogOptions): void;
     (worldContext: UE.Object, message: string, options?: LogOptionsWithoutContext): void;
 }
 
+/** GF.Log 的统一函数签名，兼容历史多参数重载 */
 export interface LogFunction {
     (message: string, options?: LogOptions): void;
     (worldContext: UE.Object, message: string): void;
@@ -73,20 +98,24 @@ export interface LogFunction {
     (worldContext: UE.Object, message: string, options: LogOptionsWithoutContext): void;
 }
 
+/** 将日志上下文绑定到指定对象（通常为 Actor 实例或类构造函数） */
 export function registerLogContext(target: object, context: RegisteredLogContext): void {
     registeredLogContexts.set(target, context);
 }
 
+/** registerLogContext 的安全包装，忽略 null / 原始类型 */
 export function bindLogContext(target: unknown, context: RegisteredLogContext): void {
     if ((typeof target === 'object' && target !== null) || typeof target === 'function') {
         registeredLogContexts.set(target, context);
     }
 }
 
+/** 校验 level 是否为合法 LogLevel 下标，非法或缺失时回退到 Log */
 function normalizeLevel(level?: LogLevel): LogLevel {
     return level !== undefined && LEVEL_LABEL[level] !== undefined ? level : LogLevel.Log;
 }
 
+/** 计算当前模块应使用的最低日志级别；Shipping 包额外抬高下限 */
 function getEffectiveMinLevel(module?: string): LogLevel {
     const configuredMin =
         module !== undefined && Config.log.moduleMinLevel[module] !== undefined
@@ -105,6 +134,7 @@ function shouldLog(level: LogLevel, module?: string): boolean {
     return level >= getEffectiveMinLevel(module);
 }
 
+/** 将 context / error 附加字段序列化为单行字符串，Error 优先保留 stack */
 function safeStringify(value: unknown): string {
     if (value instanceof Error) {
         return value.stack ?? value.message;
@@ -121,6 +151,10 @@ function safeStringify(value: unknown): string {
     }
 }
 
+/**
+ * 从 worldContext 解析已注册的日志上下文.
+ * 沿原型链向上查找，以支持在类构造函数上注册、实例调用时自动继承.
+ */
 function resolveRegisteredLogContext(target: unknown): RegisteredLogContext | undefined {
     if ((typeof target !== 'object' || target === null) && typeof target !== 'function') {
         return undefined;
@@ -136,10 +170,16 @@ function resolveRegisteredLogContext(target: unknown): RegisteredLogContext | un
         current = Object.getPrototypeOf(current);
     }
 
+    // 原型链未命中时，再查一次 constructor（兼容仅绑定在类上的注册）
     const constructor = (target as { constructor?: object }).constructor;
     return constructor ? registeredLogContexts.get(constructor) : undefined;
 }
 
+/**
+ * 合并显式 options 与已注册上下文，显式字段优先.
+ * displayName: options > registered > options.module
+ * module: options > registered > displayName
+ */
 function resolveLogContext(options: LogOptions): RegisteredLogContext {
     const registered = resolveRegisteredLogContext(options.worldContext);
     const displayName = options.displayName ?? registered?.displayName ?? options.module;
@@ -151,6 +191,7 @@ function resolveLogContext(options: LogOptions): RegisteredLogContext {
     };
 }
 
+/** 组装最终输出文本：`[Level] [displayName] message [context] [error]` */
 function formatLogMessage(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): string {
     const label = LEVEL_LABEL[level] ?? 'Log';
     const prefix = context.displayName
@@ -164,6 +205,7 @@ function formatLogMessage(message: string, level: LogLevel, context: RegisteredL
     return details.length > 0 ? `${prefix} ${message} ${details.join(' ')}` : `${prefix} ${message}`;
 }
 
+/** 决定控制台与 UE 屏幕的输出开关，显式 toScreen / toLog 可覆盖默认策略 */
 function resolveLogTargets(level: LogLevel, options: LogOptions): { toScreen: boolean; toLog: boolean } {
     const hasWorldContext = options.worldContext !== undefined && options.worldContext !== null;
     const defaultToScreen =
@@ -180,6 +222,7 @@ function resolveLogTargets(level: LogLevel, options: LogOptions): { toScreen: bo
     };
 }
 
+/** 生成 once / rateLimit 去重用的复合 key：module|level|keyOrMessage */
 function makeLogKey(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): string {
     return [
         context.module ?? context.displayName,
@@ -188,6 +231,10 @@ function makeLogKey(message: string, level: LogLevel, context: RegisteredLogCont
     ].join('|');
 }
 
+/**
+ * 根据 once / rateLimit 判断是否应跳过本次输出.
+ * 仅设置 key 也会进入限流路径，间隔取 Config.log.rateLimitDefaults.
+ */
 function shouldSuppressByFrequency(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): boolean {
     if (!options.once && !options.key && options.rateLimitSeconds === undefined) {
         return false;
@@ -199,6 +246,7 @@ function shouldSuppressByFrequency(message: string, level: LogLevel, context: Re
     }
 
     const rateLimitSeconds = options.rateLimitSeconds ?? Config.log.rateLimitDefaults.seconds;
+    // <= 0 表示关闭时间窗口限流，但仍会记录 once
     if (rateLimitSeconds <= 0) {
         if (options.once) {
             onceLogKeys.add(key);
@@ -219,6 +267,7 @@ function shouldSuppressByFrequency(message: string, level: LogLevel, context: Re
     return false;
 }
 
+/** 日志核心出口：过滤 → 格式化 → 控制台 / UE 屏幕双通道输出 */
 export function emitLog(message: string, options: LogOptions = {}): void {
     const level = normalizeLevel(options.level);
     const context = resolveLogContext(options);
@@ -236,16 +285,22 @@ export function emitLog(message: string, options: LogOptions = {}): void {
 
     if (toScreen) {
         const color = options.color ?? SCREEN_COLOR_BY_LEVEL[level];
+        // PrintString: bPrintToScreen=true, bPrintToLog=false（控制台已由上方 toLog 分支负责）
         UE.KismetSystemLibrary.PrintString(options.worldContext ?? null, formatted, true, false, color, options.duration ?? 2);
     }
 }
 
+/**
+ * 将 GF.Log 多种重载形态归一化为 { message, options }.
+ * 支持 Log(msg)、Log(actor, msg)、Log(actor, msg, level)、Log(actor, msg, level, module) 等.
+ */
 function normalizeLogArgs(
     arg0: string | UE.Object,
     arg1?: string | LogOptions | LogOptionsWithoutContext,
     arg2?: LogLevel | LogOptionsWithoutContext,
     arg3?: string
 ): { message: string; options: LogOptions } {
+    // Log(message) / Log(message, options)
     if (typeof arg0 === 'string') {
         const options =
             typeof arg1 === 'object' && arg1 !== null ? (arg1 as LogOptions) : {};
@@ -256,17 +311,21 @@ function normalizeLogArgs(
     const worldContext = arg0;
     const message = typeof arg1 === 'string' ? arg1 : '';
 
+    // Log(actor, message)
     if (arg2 === undefined) {
         return { message, options: { worldContext } };
     }
 
+    // Log(actor, message, level, module?)
     if (typeof arg2 === 'number') {
         return { message, options: { worldContext, level: arg2, module: arg3 } };
     }
 
+    // Log(actor, message, options)
     return { message, options: { ...arg2, worldContext } };
 }
 
+/** GF.Log 的实现入口，委托 normalizeLogArgs + emitLog */
 export function logWithArgs(
     arg0: string | UE.Object,
     arg1?: string | LogOptions | LogOptionsWithoutContext,
@@ -277,23 +336,28 @@ export function logWithArgs(
     emitLog(message, options);
 }
 
+/** GF.LogVerbose / LogWarn / LogError 等定级入口 */
 export function logWithLevel(
     level: LogLevel,
     arg0: string | UE.Object,
     arg1?: string | LogOptions | LogOptionsWithoutContext,
     arg2?: LogOptionsWithoutContext
 ): void {
+    // LogVerbose(message) / LogVerbose(message, options)
     if (typeof arg0 === 'string') {
         const options = typeof arg1 === 'object' && arg1 !== null ? (arg1 as LogOptions) : {};
         emitLog(arg0, { ...options, level });
         return;
     }
 
+    // LogVerbose(actor, message) / LogVerbose(actor, message, options)
     const message = typeof arg1 === 'string' ? arg1 : '';
     emitLog(message, { ...(arg2 ?? {}), worldContext: arg0, level });
 }
 
+/** 创建带固定 displayName / module 前缀的模块级日志器 */
 export function createLogger(displayName: string): Logger {
+    // 调用方未显式传入时，自动补上 displayName / module 前缀
     const withDefaults = (options: LogOptions = {}): LogOptions => ({
         ...options,
         displayName: options.displayName ?? displayName,
