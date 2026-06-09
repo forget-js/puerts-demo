@@ -6,7 +6,7 @@
  */
 import * as UE from 'ue';
 import {
-    BP_ActorBlueprint,
+    BP_SphereActorBlueprint,
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../../Blueprints';
@@ -19,8 +19,8 @@ import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-interface BP_ActorMixin extends BlueprintInstance<typeof BP_ActorBlueprint> { }
-class BP_ActorMixin implements BP_ActorMixin {
+interface BP_SphereActorMixin extends BlueprintInstance<typeof BP_SphereActorBlueprint> { }
+class BP_SphereActorMixin implements BP_SphereActorMixin {
 
     // ===========================================================================
     //                                生命周期函数
@@ -37,8 +37,8 @@ class BP_ActorMixin implements BP_ActorMixin {
         state.timers.setInterval(this.onPeriodicTick.bind(this), 5000);
 
         // 运行时绑定组件重叠（类似 C++ 里 Sphere1->OnComponentBeginOverlap.AddDynamic）
-        state.delegates.bind(this.Sphere1.OnComponentBeginOverlap, this, this.onSphereBeginOverlap);
-        state.delegates.bind(this.Sphere1.OnComponentEndOverlap, this, this.onSphereEndOverlap);
+        state.delegates.bind(this.bp_SphereTrigger.OnComponentBeginOverlap, this, this.onSphereBeginOverlap);
+        state.delegates.bind(this.bp_SphereTrigger.OnComponentEndOverlap, this, this.onSphereEndOverlap);
 
         // 调用蓝图中的函数
         this.BP_Print("来自ts的文本");
@@ -90,4 +90,4 @@ class BP_ActorMixin implements BP_ActorMixin {
 
 
 
-registerBlueprintMixin(BP_ActorBlueprint, BP_ActorMixin);
+registerBlueprintMixin(BP_SphereActorBlueprint, BP_SphereActorMixin);
