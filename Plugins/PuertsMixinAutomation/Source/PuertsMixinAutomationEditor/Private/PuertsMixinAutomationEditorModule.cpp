@@ -20,6 +20,7 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
@@ -30,6 +31,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "PuertsMixinAutomationSettings.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
@@ -98,6 +101,18 @@ FString MakeRelativePackagePath(const FString& PackageName, const FString& RootP
         RelativePath.RightChopInline(1);
     }
     return RelativePath;
+}
+
+/** AssetRegistry 重命名回调给的是 ObjectPath，脚本层需要 PackageName */
+FString MakePackageNameFromObjectPath(FString ObjectPath)
+{
+    ObjectPath.ReplaceInline(TEXT("\\"), TEXT("/"));
+    int32 DotIndex = INDEX_NONE;
+    if (ObjectPath.FindChar(TEXT('.'), DotIndex))
+    {
+        ObjectPath.LeftInline(DotIndex);
+    }
+    return ObjectPath;
 }
 
 /** 计算 TypeScript import 相对路径（不含 .ts 后缀，以 ./ 开头） */
@@ -248,6 +263,7 @@ void FPuertsMixinAutomationEditorModule::RegisterAssetCallbacks()
 {
     FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
     AssetUpdatedHandle = AssetRegistryModule.Get().OnAssetUpdated().AddRaw(this, &FPuertsMixinAutomationEditorModule::OnAssetUpdated);
+    AssetRenamedHandle = AssetRegistryModule.Get().OnAssetRenamed().AddRaw(this, &FPuertsMixinAutomationEditorModule::OnAssetRenamed);
     PackageSavedHandle = UPackage::PackageSavedWithContextEvent.AddRaw(this, &FPuertsMixinAutomationEditorModule::OnPackageSaved);
 }
 
@@ -264,6 +280,13 @@ void FPuertsMixinAutomationEditorModule::UnregisterAssetCallbacks()
         FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
         AssetRegistryModule.Get().OnAssetUpdated().Remove(AssetUpdatedHandle);
         AssetUpdatedHandle.Reset();
+    }
+
+    if (AssetRenamedHandle.IsValid() && FModuleManager::Get().IsModuleLoaded("AssetRegistry"))
+    {
+        FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+        AssetRegistryModule.Get().OnAssetRenamed().Remove(AssetRenamedHandle);
+        AssetRenamedHandle.Reset();
     }
 
     if (TickerHandle.IsValid())
@@ -398,6 +421,7 @@ void FPuertsMixinAutomationEditorModule::ExecuteCreateMixinForSelectedAssets(TAr
     }
 
     EnsureMixinRegisterFile();
+    RunBlueprintCatalogGenerator();
     GenerateMixinIndex();
 
     const FText ResultMessage = FText::Format(
@@ -425,6 +449,51 @@ void FPuertsMixinAutomationEditorModule::OnAssetUpdated(const FAssetData& AssetD
     }
 
     QueueDeclarationRefresh(AssetData.PackagePath);
+}
+
+void FPuertsMixinAutomationEditorModule::OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath)
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings || !Settings->bAutoSyncBlueprintRename || !IsPuertsMixinSupportedBlueprintAsset(AssetData))
+    {
+        return;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    const FString NewPackageName = AssetData.PackageName.ToString();
+    const FString OldPackageName = MakePackageNameFromObjectPath(OldObjectPath);
+    if (!IsUnderAssetRoot(NewPackageName, RootPath) && !IsUnderAssetRoot(OldPackageName, RootPath))
+    {
+        return;
+    }
+
+    const UBlueprint* Blueprint = Cast<UBlueprint>(AssetData.GetAsset());
+    if (!Blueprint || !IsPuertsMixinSupportedGeneratedClass(Blueprint->GeneratedClass))
+    {
+        return;
+    }
+
+    const FString Guid = Blueprint->GetBlueprintGuid().ToString(EGuidFormats::DigitsWithHyphens);
+    FString ExtraArgs = FString::Printf(
+        TEXT("--sync-blueprint --blueprint=\"%s\" --old-blueprint=\"%s\" --guid=\"%s\""),
+        *NewPackageName,
+        *OldPackageName,
+        *Guid);
+    if (Settings->bAutoRenameMixinFile)
+    {
+        ExtraArgs += TEXT(" --rename-scripts");
+    }
+
+    if (!RunBlueprintCatalogGenerator(ExtraArgs))
+    {
+        FMessageDialog::Open(EAppMsgType::Ok,
+            FText::Format(
+                LOCTEXT("SyncBlueprintRenameFailed", "Failed to sync Puerts Mixin files for renamed Blueprint:\n{0}"),
+                FText::FromString(NewPackageName)));
+        return;
+    }
+
+    QueueDeclarationRefresh(*FPackageName::GetLongPackagePath(NewPackageName));
 }
 
 void FPuertsMixinAutomationEditorModule::OnPackageSaved(
@@ -511,6 +580,7 @@ void FPuertsMixinAutomationEditorModule::GenerateMissingMixinsAndIndex()
 {
     const int32 CreatedCount = GenerateMissingMixinFiles();
     EnsureMixinRegisterFile();
+    RunBlueprintCatalogGenerator();
     GenerateMixinIndex();
 
     UE_LOG(LogTemp, Display, TEXT("PuertsMixinAutomation generated %d missing mixin file(s)."), CreatedCount);
@@ -645,12 +715,14 @@ bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString
     const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
     const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
     const FString Params = FString::Printf(
-        TEXT("\"%s\" --project=\"%s\" --blueprint=\"%s\" --blueprint-root=\"%s\" --mixin-root=\"%s\""),
+        TEXT("\"%s\" --project=\"%s\" --blueprint=\"%s\" --blueprint-root=\"%s\" --mixin-root=\"%s\" --manifest=\"%s\" --catalog=\"%s\""),
         *ScriptAbsolute,
         *ProjectDir,
         *BlueprintPackageName,
         *RootPath,
-        *NormalizeProjectRelativePath(Settings->MixinSourceRoot));
+        *NormalizeProjectRelativePath(Settings->MixinSourceRoot),
+        *NormalizeProjectRelativePath(Settings->BlueprintManifestPath),
+        *NormalizeProjectRelativePath(Settings->BlueprintCatalogPath));
 
     int32 ReturnCode = INDEX_NONE;
     FString StdOut;
@@ -673,6 +745,55 @@ bool FPuertsMixinAutomationEditorModule::RunMixinTemplateGenerator(const FString
     return true;
 }
 
+/** 通过 Node 执行 generate-blueprint-catalog.mjs，同步 Manifest / Catalog 并可处理重命名 */
+bool FPuertsMixinAutomationEditorModule::RunBlueprintCatalogGenerator(const FString& ExtraArgs) const
+{
+    const UPuertsMixinAutomationSettings* Settings = GetDefault<UPuertsMixinAutomationSettings>();
+    if (!Settings)
+    {
+        return false;
+    }
+
+    const FString ScriptAbsolute = ToProjectAbsolutePath(Settings->BlueprintCatalogScriptPath);
+    if (!FPaths::FileExists(ScriptAbsolute))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation catalog script not found: %s"), *ScriptAbsolute);
+        return false;
+    }
+
+    const FString RootPath = NormalizeAssetRoot(Settings->BlueprintRootPath);
+    const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+    const FString Params = FString::Printf(
+        TEXT("\"%s\" --project=\"%s\" --blueprint-root=\"%s\" --mixin-root=\"%s\" --manifest=\"%s\" --catalog=\"%s\" %s"),
+        *ScriptAbsolute,
+        *ProjectDir,
+        *RootPath,
+        *NormalizeProjectRelativePath(Settings->MixinSourceRoot),
+        *NormalizeProjectRelativePath(Settings->BlueprintManifestPath),
+        *NormalizeProjectRelativePath(Settings->BlueprintCatalogPath),
+        *ExtraArgs);
+
+    int32 ReturnCode = INDEX_NONE;
+    FString StdOut;
+    FString StdErr;
+    if (!FPlatformProcess::ExecProcess(*Settings->NodeExecutablePath, *Params, &ReturnCode, &StdOut, &StdErr))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("PuertsMixinAutomation failed to launch %s. Ensure Node.js is on PATH or configure NodeExecutablePath."),
+            *Settings->NodeExecutablePath);
+        return false;
+    }
+
+    if (ReturnCode != 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PuertsMixinAutomation blueprint catalog script failed (exit %d). %s%s"),
+            ReturnCode, *StdOut, *StdErr);
+        return false;
+    }
+
+    return true;
+}
+
 /** 递归收集 MixinSourceRoot 下所有 .ts（排除 .d.ts），生成 mixin-imports.ts 侧效 import 列表 */
 void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
 {
@@ -687,8 +808,54 @@ void FPuertsMixinAutomationEditorModule::GenerateMixinIndex() const
     const FString IndexDirectory = FPaths::GetPath(IndexFileAbsolute);
 
     TArray<FString> MixinFiles;
-    IFileManager::Get().FindFilesRecursive(MixinFiles, *MixinRootAbsolute, TEXT("*.ts"), true, false);
-    MixinFiles.RemoveAll([](const FString& FilePath) { return FilePath.EndsWith(TEXT(".d.ts")); });
+    const FString ManifestFileAbsolute = ToProjectAbsolutePath(Settings->BlueprintManifestPath);
+    FString ManifestSource;
+    if (FFileHelper::LoadFileToString(ManifestSource, *ManifestFileAbsolute))
+    {
+        TSharedPtr<FJsonObject> ManifestObject;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ManifestSource);
+        if (FJsonSerializer::Deserialize(Reader, ManifestObject) && ManifestObject.IsValid())
+        {
+            const TArray<TSharedPtr<FJsonValue>>* Blueprints = nullptr;
+            if (ManifestObject->TryGetArrayField(TEXT("blueprints"), Blueprints))
+            {
+                for (const TSharedPtr<FJsonValue>& BlueprintValue : *Blueprints)
+                {
+                    const TSharedPtr<FJsonObject> BlueprintObject = BlueprintValue->AsObject();
+                    if (!BlueprintObject.IsValid())
+                    {
+                        continue;
+                    }
+
+                    bool bMissing = false;
+                    BlueprintObject->TryGetBoolField(TEXT("missing"), bMissing);
+
+                    bool bAutoManaged = true;
+                    BlueprintObject->TryGetBoolField(TEXT("autoManaged"), bAutoManaged);
+                    if (bMissing || !bAutoManaged)
+                    {
+                        continue;
+                    }
+
+                    FString MixinFileRelative;
+                    if (BlueprintObject->TryGetStringField(TEXT("mixinFile"), MixinFileRelative))
+                    {
+                        const FString MixinFileAbsolute = ToProjectAbsolutePath(MixinFileRelative);
+                        if (FPaths::FileExists(MixinFileAbsolute))
+                        {
+                            MixinFiles.Add(MixinFileAbsolute);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (MixinFiles.IsEmpty())
+    {
+        IFileManager::Get().FindFilesRecursive(MixinFiles, *MixinRootAbsolute, TEXT("*.ts"), true, false);
+        MixinFiles.RemoveAll([](const FString& FilePath) { return FilePath.EndsWith(TEXT(".d.ts")); });
+    }
     MixinFiles.Sort();
 
     // 每条 import 使用相对路径，确保从 index 文件所在目录可解析

@@ -1,12 +1,19 @@
 /**
- * 扫描 MixinSourceRoot 下所有 .ts 文件，生成 mixin-imports.ts 聚合 import。
+ * 生成 mixin-imports.ts 聚合 import。
  *
- * 可作为独立脚本运行；编辑器模块内也有等价的 C++ 实现（GenerateMixinIndex）。
+ * 优先使用 Manifest 中的 autoManaged mixin 列表，避免孤儿脚本被副作用加载；
+ * Manifest 不存在时回退扫描 MixinSourceRoot。编辑器模块内有等价 C++ 实现。
  *
  * 用法: node generate-mixin-index.mjs --project=<项目根> --mixin-root=... --index=...
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  loadManifest,
+  normalizeProjectRelativePath,
+  saveCatalog,
+  toProjectPath,
+} from './blueprint-manifest-utils.mjs';
 
 const args = process.argv.slice(2);
 
@@ -20,6 +27,8 @@ function readArg(name, fallback) {
 const projectRoot = path.resolve(readArg('project', process.cwd()));
 const mixinRoot = path.resolve(projectRoot, readArg('mixin-root', 'TypeScript/Mixins/Blueprints'));
 const indexFile = path.resolve(projectRoot, readArg('index', 'TypeScript/Mixins/_generated/mixin-imports.ts'));
+const manifestFile = toProjectPath(projectRoot, readArg('manifest', 'TypeScript/Mixins/_generated/blueprint-manifest.json'));
+const catalogFile = toProjectPath(projectRoot, readArg('catalog', 'TypeScript/Blueprints/_generated/BlueprintCatalog.ts'));
 
 /** 递归收集目录下所有 .ts 文件（排除 .d.ts） */
 function walk(dir) {
@@ -40,8 +49,22 @@ function walk(dir) {
   });
 }
 
+/** 取得应被副作用 import 的 mixin 文件列表。 */
+function getMixinFiles() {
+  if (!fs.existsSync(manifestFile)) {
+    return walk(mixinRoot);
+  }
+
+  const manifest = loadManifest(manifestFile);
+  saveCatalog(catalogFile, manifest);
+  return manifest.blueprints
+    .filter((entry) => !entry.missing && entry.autoManaged !== false)
+    .map((entry) => toProjectPath(projectRoot, normalizeProjectRelativePath(entry.mixinFile)))
+    .filter((file) => fs.existsSync(file));
+}
+
 const indexDir = path.dirname(indexFile);
-const imports = walk(mixinRoot)
+const imports = getMixinFiles()
   .sort((a, b) => a.localeCompare(b))
   .map((file) => {
     let importPath = path.relative(indexDir, file).replace(/\\/g, '/').replace(/\.ts$/, '');

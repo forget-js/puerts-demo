@@ -44,6 +44,14 @@ public:
     UPROPERTY(EditAnywhere, Config, Category = "Paths")
     FString MixinRegisterPath;
 
+    /** Blueprint Manifest 路径，记录蓝图 GUID、当前路径与一对一 Mixin 映射（相对于项目根目录） */
+    UPROPERTY(EditAnywhere, Config, Category = "Paths")
+    FString BlueprintManifestPath;
+
+    /** 自动生成的 Blueprint Catalog TypeScript 路径（相对于项目根目录） */
+    UPROPERTY(EditAnywhere, Config, Category = "Paths")
+    FString BlueprintCatalogPath;
+
     /** Mixin 模板自动创建策略；正式项目建议 Disabled，通过右键菜单显式创建 */
     UPROPERTY(EditAnywhere, Config, Category = "Generation")
     EPuertsMixinAutoCreatePolicy AutoCreateMixinPolicy;
@@ -56,6 +64,14 @@ public:
     UPROPERTY(EditAnywhere, Config, Category = "Generation")
     bool bGenerateOnBlueprintSave;
 
+    /** 为 true 时监听 Blueprint 重命名，并自动同步 Manifest、Catalog、Mixin 文件与 TS 引用 */
+    UPROPERTY(EditAnywhere, Config, Category = "Generation")
+    bool bAutoSyncBlueprintRename;
+
+    /** 为 true 时 Blueprint 重命名会同步移动一对一 Mixin 文件 */
+    UPROPERTY(EditAnywhere, Config, Category = "Generation")
+    bool bAutoRenameMixinFile;
+
     /** Blueprint 保存后的防抖延迟（秒），避免连续保存触发多次生成 */
     UPROPERTY(EditAnywhere, Config, Category = "Generation", meta = (ClampMin = "0.1", UIMin = "0.1"))
     float BlueprintSaveDebounceSeconds;
@@ -67,4 +83,8 @@ public:
     /** mixin 模板生成脚本路径（相对于项目根目录） */
     UPROPERTY(EditAnywhere, Config, Category = "Generation")
     FString MixinTemplateScriptPath;
+
+    /** Blueprint Catalog / Manifest 同步脚本路径（相对于项目根目录） */
+    UPROPERTY(EditAnywhere, Config, Category = "Generation")
+    FString BlueprintCatalogScriptPath;
 };

@@ -1,13 +1,23 @@
 /**
  * 为单个 Blueprint 生成 Puerts mixin TypeScript 模板。
  *
- * 由编辑器模块通过 Node 调用，读取 ue_bp.d.ts / ue.d.ts 推断生命周期类型，
- * 输出 blueprint.mixin 样板代码到 MixinSourceRoot 对应路径。
+ * 由编辑器模块通过 Node 调用：先维护 Manifest / BlueprintCatalog，
+ * 再读取 ue_bp.d.ts / ue.d.ts 推断生命周期类型，并输出基于
+ * registerBlueprintMixin + BlueprintInstance 的一对一 mixin 样板。
  *
  * 用法: node generate-mixin-template.mjs --project=<项目根> --blueprint=/Game/... --blueprint-root=... --mixin-root=...
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  loadManifest,
+  makeBlueprintEntry,
+  makeRelativeImportPath,
+  saveCatalog,
+  saveManifest,
+  toProjectPath,
+  upsertManifestEntry,
+} from './blueprint-manifest-utils.mjs';
 
 const args = process.argv.slice(2);
 
@@ -200,18 +210,17 @@ function makeLifecycleBody(kind) {
 }
 
 /** 组装完整的 mixin 源文件内容 */
-function buildMixinSource({ packageName, assetName, lifecycleKind, runtimeImportPath }) {
-  const classPath = `${packageName}.${assetName}_C`;
-  const typeNamespace = makeTypeScriptNamespace(packageName);
-  const generatedClassName = filenameToTypeScriptVariableName(`${assetName}_C`);
-  const typePath = `UE.${typeNamespace}.${generatedClassName}`;
-  const mixinClassName = filenameToTypeScriptVariableName(`${assetName}Mixin`);
+function buildMixinSource({ assetName, entry, lifecycleKind, runtimeImportPath, blueprintsImportPath }) {
   const runtimeStateInterfaceName = `${assetName}RuntimeState`;
 
   const sections = [
     makeModuleHeader(assetName),
     "import * as UE from 'ue';",
-    "import { blueprint } from 'puerts';",
+    `import {`,
+    `    ${entry.catalogSymbol},`,
+    `    registerBlueprintMixin,`,
+    `    type BlueprintInstance,`,
+    `} from '${blueprintsImportPath}';`,
     `import {`,
     `    clearMixinRuntimeState,`,
     `    getMixinRuntimeState,`,
@@ -236,11 +245,8 @@ function buildMixinSource({ packageName, assetName, lifecycleKind, runtimeImport
     '',
     makeSectionHeader('Blueprint Mixin 绑定'),
     '',
-    `const uclass = UE.Class.Load("${classPath}");`,
-    `const jsClass = blueprint.tojs<typeof ${typePath}>(uclass);`,
-    '',
-    `interface ${mixinClassName} extends ${typePath} { }`,
-    `class ${mixinClassName} implements ${mixinClassName} {`,
+    `interface ${entry.mixinClassName} extends BlueprintInstance<typeof ${entry.catalogSymbol}> { }`,
+    `class ${entry.mixinClassName} implements ${entry.mixinClassName} {`,
     '',
     makeSectionHeader('生命周期函数', '    '),
     '',
@@ -262,7 +268,7 @@ function buildMixinSource({ packageName, assetName, lifecycleKind, runtimeImport
     '}',
     '',
     '',
-    `blueprint.mixin(jsClass, ${mixinClassName});`,
+    `registerBlueprintMixin(${entry.catalogSymbol}, ${entry.mixinClassName});`,
     '',
   ];
 
@@ -280,6 +286,8 @@ if (!blueprintPath) {
 const projectRoot = path.resolve(readArg('project', process.cwd()));
 const blueprintRoot = normalizeAssetRoot(readArg('blueprint-root', '/Game/Blueprints'));
 const mixinRoot = readArg('mixin-root', 'TypeScript/Mixins/Blueprints');
+const manifestFile = toProjectPath(projectRoot, readArg('manifest', 'TypeScript/Mixins/_generated/blueprint-manifest.json'));
+const catalogFile = toProjectPath(projectRoot, readArg('catalog', 'TypeScript/Blueprints/_generated/BlueprintCatalog.ts'));
 const bpDeclarationFile = path.resolve(projectRoot, 'Typing/ue/ue_bp.d.ts');
 const ueDeclarationFile = path.resolve(projectRoot, 'Typing/ue/ue.d.ts');
 
@@ -290,18 +298,29 @@ if (!assetName) {
   process.exit(1);
 }
 
-const relativePackagePath = makeRelativePackagePath(normalizedBlueprint, blueprintRoot);
-if (!relativePackagePath) {
+const entry = makeBlueprintEntry({
+  packageName: normalizedBlueprint,
+  rootPath: blueprintRoot,
+  mixinRoot,
+  guid: readArg('guid', ''),
+});
+if (!makeRelativePackagePath(normalizedBlueprint, blueprintRoot)) {
   console.error(`[PuertsMixinAutomation] Blueprint is outside configured root: ${blueprintPath}`);
   process.exit(1);
 }
 
-const outputFile = path.resolve(projectRoot, mixinRoot, `${relativePackagePath}.ts`);
+const manifest = loadManifest(manifestFile);
+upsertManifestEntry(manifest, entry);
+saveManifest(manifestFile, manifest);
+saveCatalog(catalogFile, manifest);
+
+const outputFile = toProjectPath(projectRoot, entry.mixinFile);
 const generatedClassName = filenameToTypeScriptVariableName(`${assetName}_C`);
 let runtimeImportPath = path.relative(path.dirname(outputFile), path.resolve(projectRoot, 'TypeScript/Runtime')).replace(/\\/g, '/');
 if (!runtimeImportPath.startsWith('.')) {
   runtimeImportPath = `./${runtimeImportPath}`;
 }
+const blueprintsImportPath = makeRelativeImportPath(outputFile, path.resolve(projectRoot, 'TypeScript/Blueprints'));
 
 let lifecycleKind = 'other';
 if (fs.existsSync(bpDeclarationFile)) {
@@ -315,10 +334,11 @@ if (fs.existsSync(bpDeclarationFile)) {
 }
 
 const source = buildMixinSource({
-  packageName: normalizedBlueprint,
   assetName,
+  entry,
   lifecycleKind,
   runtimeImportPath,
+  blueprintsImportPath,
 });
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });

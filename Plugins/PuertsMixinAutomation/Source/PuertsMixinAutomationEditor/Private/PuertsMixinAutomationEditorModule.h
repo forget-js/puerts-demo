@@ -45,6 +45,8 @@ private:
 
     /** 资产注册表回调：Blueprint 更新时入队等待刷新 */
     void OnAssetUpdated(const FAssetData& AssetData);
+    /** 资产注册表回调：Blueprint 重命名后同步 Manifest / Catalog / Mixin 文件 */
+    void OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath);
     /** 包保存回调：覆盖仅保存 Blueprint 内容但资产注册表未更新的情况 */
     void OnPackageSaved(const FString& PackageFileName, UPackage* Package, FObjectPostSaveContext ObjectSaveContext);
     /** 防抖 Ticker：延迟执行声明刷新与 mixin 索引维护 */
@@ -59,6 +61,8 @@ private:
     EMixinCreateResult CreateMixinFileForBlueprintPackage(const FString& BlueprintPackageName, bool bAllowOverwrite) const;
     /** 调用 Node 脚本为单个 Blueprint 生成 mixin 模板内容 */
     bool RunMixinTemplateGenerator(const FString& BlueprintPackageName) const;
+    /** 调用 Node 脚本刷新 Blueprint Manifest / Catalog，可附加重命名同步参数 */
+    bool RunBlueprintCatalogGenerator(const FString& ExtraArgs = TEXT("")) const;
     /** 扫描 MixinSourceRoot 下所有 .ts 文件，重写 mixin-imports.ts */
     void GenerateMixinIndex() const;
     /** 若 register.ts 不存在则创建，用于统一加载所有 mixin */
@@ -69,6 +73,7 @@ private:
     void ExecuteCreateMixinForSelectedAssets(TArray<FAssetData> SelectedAssets) const;
 
     FDelegateHandle AssetUpdatedHandle;
+    FDelegateHandle AssetRenamedHandle;
     FDelegateHandle PackageSavedHandle;
     FDelegateHandle ContentBrowserAssetMenuExtenderHandle;
     FTSTicker::FDelegateHandle TickerHandle;

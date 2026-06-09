@@ -26,6 +26,7 @@ public class PuertsMixinAutomationEditor : ModuleRules
             {
                 "AssetRegistry",
                 "ContentBrowser",
+                "Json",
                 "Projects",
                 "Settings",
                 "Slate",
