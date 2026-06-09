@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "blueprints": [
+    {
+      "blueprintGuid": "legacy:/Game/Blueprints/Actors/BP_Actor",
+      "packageName": "/Game/Blueprints/Actors/BP_Actor",
+      "assetName": "BP_Actor",
+      "generatedClassPath": "/Game/Blueprints/Actors/BP_Actor.BP_Actor_C",
+      "typePath": "UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C",
+      "mixinFile": "TypeScript/Mixins/Blueprints/Actors/BP_Actor.ts",
+      "mixinClassName": "BP_ActorMixin",
+      "catalogSymbol": "BP_ActorBlueprint",
+      "previousCatalogSymbols": [],
+      "autoManaged": true
+    },
+    {
+      "blueprintGuid": "472F7E28-44BB-212F-ADA4-E78C11DF0C5C",
+      "packageName": "/Game/Blueprints/Actors/BP_ConeActor",
+      "assetName": "BP_ConeActor",
+      "generatedClassPath": "/Game/Blueprints/Actors/BP_ConeActor.BP_ConeActor_C",
+      "typePath": "UE.Game.Blueprints.Actors.BP_ConeActor.BP_ConeActor_C",
+      "mixinFile": "TypeScript/Mixins/Blueprints/Actors/BP_ConeActor.ts",
+      "mixinClassName": "BP_ConeActorMixin",
+      "catalogSymbol": "BP_ConeActorBlueprint",
+      "previousCatalogSymbols": [
+        "BP_TestBlueprint",
+        "BP_ConeBlueprint"
+      ],
+      "autoManaged": true
+    },
+    {
+      "blueprintGuid": "legacy:/Game/Blueprints/Actors/BP_UMGManager",
+      "packageName": "/Game/Blueprints/Actors/BP_UMGManager",
+      "assetName": "BP_UMGManager",
+      "generatedClassPath": "/Game/Blueprints/Actors/BP_UMGManager.BP_UMGManager_C",
+      "typePath": "UE.Game.Blueprints.Actors.BP_UMGManager.BP_UMGManager_C",
+      "mixinFile": "TypeScript/Mixins/Blueprints/Actors/BP_UMGManager.ts",
+      "mixinClassName": "BP_UMGManagerMixin",
+      "catalogSymbol": "BP_UMGManagerBlueprint",
+      "previousCatalogSymbols": [],
+      "autoManaged": true
+    },
+    {
+      "blueprintGuid": "D567E919-4DC0-3758-15AA-08BA066B2714",
+      "packageName": "/Game/Blueprints/Actors/WBP_GameTime",
+      "assetName": "WBP_GameTime",
+      "generatedClassPath": "/Game/Blueprints/Actors/WBP_GameTime.WBP_GameTime_C",
+      "typePath": "UE.Game.Blueprints.Actors.WBP_GameTime.WBP_GameTime_C",
+      "mixinFile": "TypeScript/Mixins/Blueprints/Actors/WBP_GameTime.ts",
+      "mixinClassName": "WBP_GameTimeMixin",
+      "catalogSymbol": "WBP_GameTimeBlueprint",
+      "previousCatalogSymbols": [
+        "WBP_TestBlueprint"
+      ],
+      "autoManaged": true
+    },
+    {
+      "blueprintGuid": "legacy:/Game/Blueprints/BP_Cube",
+      "packageName": "/Game/Blueprints/BP_Cube",
+      "assetName": "BP_Cube",
+      "generatedClassPath": "/Game/Blueprints/BP_Cube.BP_Cube_C",
+      "typePath": "UE.Game.Blueprints.BP_Cube.BP_Cube_C",
+      "mixinFile": "TypeScript/Mixins/Blueprints/BP_Cube.ts",
+      "mixinClassName": "BP_CubeMixin",
+      "catalogSymbol": "BP_CubeBlueprint",
+      "previousCatalogSymbols": [],
+      "autoManaged": true
+    }
+  ]
+}

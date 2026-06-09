@@ -1,0 +1,49 @@
+/**
+ * Blueprint Catalog 运行时入口。
+ *
+ * 手写 Mixin / Game 代码只从这里加载蓝图类、获取类型和注册 mixin，
+ * 避免在业务脚本中散落 `/Game/...` 路径与 UE 蓝图生成类型引用。
+ */
+import * as UE from 'ue';
+import { blueprint } from 'puerts';
+import {
+    type BlueprintClass,
+    type BlueprintDescriptor,
+    type BlueprintInstance,
+    type BlueprintSymbol,
+} from './_generated/BlueprintCatalog';
+
+export * from './_generated/BlueprintCatalog';
+export type { BlueprintClass, BlueprintDescriptor, BlueprintInstance, BlueprintSymbol };
+
+type BlueprintMixinConstructor<TInstance> = new (...args: any[]) => TInstance;
+
+/** 按 Catalog 描述符加载 UE 蓝图生成类。 */
+export function loadBlueprintClass<TDescriptor extends BlueprintDescriptor>(
+    descriptor: TDescriptor
+): UE.Class {
+    const uclass = UE.Class.Load(descriptor.path);
+    if (!uclass) {
+        throw new Error(`Failed to load Blueprint class: ${descriptor.path}`);
+    }
+
+    return uclass;
+}
+
+/** 转换为 Puerts 可用于 `blueprint.mixin` 的 JS class。 */
+export function toBlueprintJsClass<TDescriptor extends BlueprintDescriptor>(
+    descriptor: TDescriptor
+): BlueprintClass<TDescriptor> {
+    return blueprint.tojs<BlueprintClass<TDescriptor>>(
+        loadBlueprintClass(descriptor)
+    ) as unknown as BlueprintClass<TDescriptor>;
+}
+
+/** 将 TS mixin class 绑定到指定蓝图生成类。 */
+export function registerBlueprintMixin<TDescriptor extends BlueprintDescriptor>(
+    descriptor: TDescriptor,
+    mixinClass: BlueprintMixinConstructor<BlueprintInstance<TDescriptor>>
+): void {
+    // Puerts 的 mixin 类型约束基于 InstanceType；这里由 Catalog 的 descriptor 保证两者对应。
+    blueprint.mixin(toBlueprintJsClass(descriptor), mixinClass as any);
+}
