@@ -76,10 +76,11 @@ pnpm-debug.log*
 /Typing/
 
 # -----------------------------------------------------------------------------
-# PuertsMixinAutomation — 自动生成的 mixin 聚合导入（降低多人合并冲突）
-# 首次克隆或清理后请先执行：`npm install` → `npm run gen:mixin-index`
-# Editor 也会在生成声明或保存蓝图并触发插件逻辑时重写该文件
+# PuertsMixinAutomation — 可由 Manifest 派生的生成文件（降低多人合并冲突）
+# 首次克隆或清理后请先执行：`npm install` → `npm run gen:blueprint-catalog` → `npm run gen:mixin-index`
+# 注意：blueprint-manifest.json 是协同状态文件，建议纳入版本管理，不在此忽略
 # -----------------------------------------------------------------------------
+/TypeScript/Blueprints/_generated/BlueprintCatalog.ts
 /TypeScript/Mixins/_generated/mixin-imports.ts
 
 # 本地开发配置覆盖（复制 Config/Env/config.dev.example.ts 为 config.dev.ts）
