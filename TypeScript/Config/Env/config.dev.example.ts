@@ -12,8 +12,13 @@ export const configDev: Partial<AppConfig> = {
     log: {
         globalMinLevel: LogLevel.Error,
         showScreenLogs: true,
+        screenMinLevel: LogLevel.Log,
+        shippingMinLevel: LogLevel.Warning,
+        rateLimitDefaults: {
+            seconds: 0,
+        },
         moduleMinLevel: {
-            'Mixins/Blueprints/Actors/BP_Actor': LogLevel.Verbose,
+            BP_ConeActor: LogLevel.Verbose,
         },
     },
 };

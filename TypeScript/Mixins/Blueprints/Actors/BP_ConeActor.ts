@@ -13,7 +13,7 @@ import {
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../../Blueprints';
-import { GF, GE } from '../../../Global';
+import { GF } from '../../../Global';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
@@ -91,7 +91,9 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
 
     SetMovementPaused(isPaused: boolean): void {
         this.getRuntimeState().isMovementPaused = isPaused;
-        GF.Log(this, `[BP_Test] movement ${isPaused ? 'paused' : 'resumed'}`);
+        GF.Log(this, `movement ${isPaused ? 'paused' : 'resumed'}`, {
+            context: { paused: isPaused },
+        });
     }
 
     ToggleMovementPaused(): boolean {
@@ -113,13 +115,17 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
     private updateOrbitLocation(deltaSeconds: number): void {
         const orbit = this.getRuntimeState().orbit;
         if (!orbit) {
-            GF.Log(this, `[BP_Test] orbit missing, radius=${this.bp_radius}`, GE.LogLevel.Warning);
+            GF.Warn(this, 'orbit missing', {
+                context: { radius: this.bp_radius },
+            });
             return;
         }
 
         const radius = Number(this.bp_radius);
         if (!Number.isFinite(radius) || radius <= 0) {
-            GF.Log(this, `[BP_Test] invalid radius=${this.bp_radius}`, GE.LogLevel.Warning);
+            GF.Warn(this, 'invalid radius', {
+                context: { radius: this.bp_radius },
+            });
             return;
         }
 

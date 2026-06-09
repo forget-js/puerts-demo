@@ -210,7 +210,7 @@ function makeLifecycleBody(kind) {
 }
 
 /** 组装完整的 mixin 源文件内容 */
-function buildMixinSource({ assetName, entry, lifecycleKind, runtimeImportPath, blueprintsImportPath }) {
+function buildMixinSource({ assetName, entry, lifecycleKind, runtimeImportPath, blueprintsImportPath, globalImportPath }) {
   const runtimeStateInterfaceName = `${assetName}RuntimeState`;
 
   const sections = [
@@ -226,6 +226,7 @@ function buildMixinSource({ assetName, entry, lifecycleKind, runtimeImportPath, 
     `    getMixinRuntimeState,`,
     `    type MixinRuntimeState,`,
     `} from '${runtimeImportPath}';`,
+    `import { GF } from '${globalImportPath}';`,
     '',
     '',
     makeSectionHeader('配置常量'),
@@ -265,6 +266,8 @@ function buildMixinSource({ assetName, entry, lifecycleKind, runtimeImportPath, 
     makeSectionHeader('私有方法', '    '),
     '',
     '    // 监听回调、定时器回调、Overlap 处理等私有方法在此添加.',
+    "    // GF.Log(this, 'message', { context: { example: true } });",
+    "    // GF.Warn(this, 'warning message');",
     '}',
     '',
     '',
@@ -321,6 +324,7 @@ if (!runtimeImportPath.startsWith('.')) {
   runtimeImportPath = `./${runtimeImportPath}`;
 }
 const blueprintsImportPath = makeRelativeImportPath(outputFile, path.resolve(projectRoot, 'TypeScript/Blueprints'));
+const globalImportPath = makeRelativeImportPath(outputFile, path.resolve(projectRoot, 'TypeScript/Global'));
 
 let lifecycleKind = 'other';
 if (fs.existsSync(bpDeclarationFile)) {
@@ -339,6 +343,7 @@ const source = buildMixinSource({
   lifecycleKind,
   runtimeImportPath,
   blueprintsImportPath,
+  globalImportPath,
 });
 
 fs.mkdirSync(path.dirname(outputFile), { recursive: true });

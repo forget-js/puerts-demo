@@ -9,12 +9,13 @@ import {
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../Blueprints';
+import { GF } from '../../Global';
 
 interface BP_CubeMixin extends BlueprintInstance<typeof BP_CubeBlueprint> { }
 class BP_CubeMixin implements BP_CubeMixin {
 
     ReceiveBeginPlay(): void {
-        console.log("=== ts log")
+        GF.Log(this, 'ts log');
     }
 
     // 演示用途: 每帧按 DeltaSeconds 旋转; 正式业务应避免 Tick, 改用 Timer 或事件驱动.

@@ -143,21 +143,33 @@ TypeScript/
 ```typescript
 import { GF, GE } from '../../../Global';
 
-// 仅 Output Log
+// 仅 Output Log；无 worldContext 时不会上屏
 GF.Log('仅控制台', { level: GE.LogLevel.Verbose });
 
-// Mixin 常用：一行，默认上屏 + Log 级别
+// Mixin 常用：自动输出 [BP_Xxx][Log] 前缀，默认按配置决定是否上屏
 GF.Log(this, '上屏 + Log');
 
-// 指定级别；第 4 参数 module 配合 Config.log.moduleMinLevel
-GF.Log(this, 'Verbose 调试', GE.LogLevel.Verbose, 'Mixins/Blueprints/Actors/BP_Actor');
+// 级别快捷方法；输出级别也会进入文本，便于搜索 Warning / Error
+GF.Warn(this, '配置缺失');
 
-// 完整 options（少数情况）
-GF.Log(this, '自定义', { level: GE.LogLevel.Warning, duration: 5 });
+// 结构化数据与上屏控制
+GF.Log(this, '自定义', {
+    context: { radius: this.bp_radius },
+    duration: 5,
+    toScreen: true,
+});
+
+// 高频日志应提供 key 并限流
+GF.Log(this, 'Tick sample', {
+    key: 'tick-sample',
+    rateLimitSeconds: 1,
+});
 ```
 
 - 只 `import { GF, GE }`，不要零散 `import { LogLevel }`。
-- `GF.Log(this, msg)` 第一个参数为 Actor/WorldContext；日志正文避免连续大量 `-`（`GF.Log` 会将 `----` 转为 `====`）。
+- `GF.Log(this, msg)` 第一个参数为 Actor/WorldContext；Mixin 注册后会自动推导蓝图显示名，如 `BP_ConeActor`，业务脚本不要在日志正文里手写 `[BP_Xxx]` 前缀。
+- `Config.log.moduleMinLevel` 使用自动显示名作为 key，例如 `BP_ConeActor`。
+- `toScreen` 只控制是否上屏，不影响 Output Log / console 输出；`Shipping` 默认不上屏，并受 `shippingMinLevel` 保护。
 
 **降低合并冲突与运行时噪音：**
 
@@ -366,8 +378,8 @@ private releaseOverlap(): void {
 
 - 参数命名：`xxxXxx`，禁止 `_xxx` / `xxx_xxx` 等形式。
 - 单函数逻辑（不含注释）建议 **≤ 30 行**，尽量一屏内读完。
-- 使用 **`GF.Log`**（`import { GF, GE } from '.../Global'`）或等价项目封装；**禁止**裸用 `print`；调试日志优先于散落 `console.log`。
-- 日志内容中避免大量 `-` 字符（可用 `=` 代替分隔线）。
+- 使用 **`GF.Log` / `GF.Warn` / `GF.Error`**（`import { GF, GE } from '.../Global'`）或等价项目封装；业务代码禁止裸用 `print` / `console.*`。
+- Mixin 日志前缀由 `registerBlueprintMixin` 自动推导，不在日志正文里手写模块名。
 
 **私有方法**使用 TypeScript `private`，命名仍遵循动词前缀规范（见第 5 节）。
 

@@ -1,5 +1,5 @@
 /**
- * [示例] BP_Actor: 定时器、委托绑定与蓝图函数调用演示.
+ * [模块说明] BP_SphereActor: 定时器、委托绑定与蓝图函数调用演示.
  * DONE  1. ReceiveBeginPlay 注册 TimerBag / DelegateBag
  * DONE  2. Overlap 回调与 GF.Log
  * DONE  3. ReceiveEndPlay 清理运行时状态
@@ -64,7 +64,7 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         SweepResult: UE.HitResult
     ): void {
         if (OtherActor) {
-            GF.Log(this, `触碰物体: ${OtherActor.GetName()}`);
+            GF.Warn(this, `触碰物体: ${OtherActor.GetName()}`);
         }
     }
 
@@ -75,7 +75,7 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         OtherBodyIndex: number
     ): void {
         if (OtherActor) {
-            GF.Log(`离开物体: ${OtherActor.GetName()}`);
+            GF.Error(this, `离开物体: ${OtherActor.GetName()}`);
         }
     }
 

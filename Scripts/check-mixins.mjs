@@ -3,8 +3,12 @@
  *
  * 校验:
  * 1. 手写 TypeScript 禁止直接硬编码 UE.Class.Load('/Game/...') 和 UE.Game.Blueprints 类型路径
- * 2. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
- * 3. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
+ * 2. 手写 TypeScript 禁止直接使用 console.log/warn/error (应使用 GF.Log/GF.Warn/GF.Error)
+ * 3. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
+ * 4. 重命名后的旧 Catalog 符号不得继续被引用
+ * 5. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
+ *
+ * 用法: node check-mixins.mjs [--project=<项目根>] [--manifest=...] [--catalog=...] [--index=...]
  */
 
 import fs from 'node:fs';
@@ -19,16 +23,19 @@ import {
 
 const args = process.argv.slice(2);
 
+/** 从命令行读取 --name=value 参数 */
 function readArg(name, fallback) {
   const prefix = `--${name}=`;
   const value = args.find((arg) => arg.startsWith(prefix));
   return value ? value.slice(prefix.length) : fallback;
 }
 
+/** 统一换行符, 避免 Windows/Unix 差异导致生成产物比对失败 */
 function normalizeNewlines(source) {
   return source.replace(/\r\n/g, '\n');
 }
 
+/** 将 mixin 源文件路径转为 mixin-imports.ts 中可用的相对 import 路径 */
 function toImportPath(indexDir, file) {
   let importPath = path.relative(indexDir, file).replace(/\\/g, '/').replace(/\.ts$/, '');
   if (!importPath.startsWith('.')) {
@@ -37,6 +44,10 @@ function toImportPath(indexDir, file) {
   return importPath;
 }
 
+/**
+ * 根据 Manifest 推导 mixin-imports.ts 的期望内容.
+ * 仅包含存在且 autoManaged 的 mixin 侧效 import, 顺序按路径排序以保证稳定输出.
+ */
 function makeIndexSource(projectRoot, manifest, indexFile) {
   const indexDir = path.dirname(indexFile);
   const imports = manifest.blueprints
@@ -53,12 +64,17 @@ function makeIndexSource(projectRoot, manifest, indexFile) {
   ].join('\n');
 }
 
+/** 跳过自动生成目录及 BlueprintCatalog, 只扫描手写 TypeScript */
 function isGeneratedFile(file, catalogFile) {
   const normalized = path.resolve(file).replace(/\\/g, '/');
   return normalized === path.resolve(catalogFile).replace(/\\/g, '/')
     || normalized.includes('/TypeScript/Mixins/_generated/');
 }
 
+/**
+ * 禁止在手写代码中硬编码蓝图资产路径.
+ * 应通过 BlueprintCatalog 符号 + BlueprintInstance 访问蓝图类型.
+ */
 function checkNoHardcodedBlueprintReferences(projectRoot, catalogFile) {
   const errors = [];
   const typeScriptRoot = path.resolve(projectRoot, 'TypeScript');
@@ -79,6 +95,35 @@ function checkNoHardcodedBlueprintReferences(projectRoot, catalogFile) {
   return errors;
 }
 
+/**
+ * 禁止在手写代码中直接使用 console.*.
+ * GF 封装位于 Function.ts, 该文件自身及生成产物不在扫描范围内.
+ */
+function checkNoBareConsole(projectRoot, catalogFile) {
+  const errors = [];
+  const typeScriptRoot = path.resolve(projectRoot, 'TypeScript');
+  const loggerFile = path.resolve(projectRoot, 'TypeScript/Global/Logger.ts').replace(/\\/g, '/');
+
+  for (const file of walkTypeScriptFiles(typeScriptRoot)) {
+    const normalized = path.resolve(file).replace(/\\/g, '/');
+    if (isGeneratedFile(file, catalogFile) || normalized === loggerFile) {
+      continue;
+    }
+
+    const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
+    const source = fs.readFileSync(file, 'utf8');
+    if (/console\.(log|warn|error)\s*\(/.test(source)) {
+      errors.push(`${relativeFile}: do not use console.log/warn/error directly; use GF.Log/GF.Warn/GF.Error.`);
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * 校验 Manifest 条目与 mixin 源文件一致:
+ * 文件存在、catalogSymbol / mixinClassName 出现、且 registerBlueprintMixin 调用匹配.
+ */
 function checkManifestEntries(projectRoot, manifest) {
   const errors = [];
   for (const entry of manifest.blueprints.filter((item) => !item.missing)) {
@@ -103,6 +148,10 @@ function checkManifestEntries(projectRoot, manifest) {
   return errors;
 }
 
+/**
+ * 蓝图重命名后, Manifest 会记录 previousCatalogSymbols.
+ * 扫描手写代码, 确保旧符号已全部替换为新符号.
+ */
 function checkPreviousSymbols(projectRoot, manifest, catalogFile) {
   const errors = [];
   const previousSymbols = manifest.blueprints.flatMap((entry) => entry.previousCatalogSymbols ?? []);
@@ -125,18 +174,24 @@ function checkPreviousSymbols(projectRoot, manifest, catalogFile) {
   return errors;
 }
 
+// --- 路径配置 (均可通过 CLI 覆盖) ---
+
 const projectRoot = path.resolve(readArg('project', process.cwd()));
 const indexFile = path.resolve(projectRoot, readArg('index', 'TypeScript/Mixins/_generated/mixin-imports.ts'));
 const manifestFile = path.resolve(projectRoot, readArg('manifest', 'TypeScript/Mixins/_generated/blueprint-manifest.json'));
 const catalogFile = path.resolve(projectRoot, readArg('catalog', 'TypeScript/Blueprints/_generated/BlueprintCatalog.ts'));
 
+// --- 执行校验 ---
+
 const errors = [];
 const manifest = loadManifest(manifestFile);
 
 errors.push(...checkNoHardcodedBlueprintReferences(projectRoot, catalogFile));
+errors.push(...checkNoBareConsole(projectRoot, catalogFile));
 errors.push(...checkManifestEntries(projectRoot, manifest));
 errors.push(...checkPreviousSymbols(projectRoot, manifest, catalogFile));
 
+// 生成产物与 Manifest 推导结果逐字比对, 不一致则提示重新生成
 const expectedCatalogSource = makeCatalogSource(manifest);
 const actualCatalogSource = fs.existsSync(catalogFile) ? fs.readFileSync(catalogFile, 'utf8') : '';
 if (normalizeNewlines(actualCatalogSource) !== expectedCatalogSource) {

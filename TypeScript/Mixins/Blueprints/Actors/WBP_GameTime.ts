@@ -11,7 +11,7 @@ import {
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../../Blueprints';
-import { GF, GE } from '../../../Global';
+import { GF } from '../../../Global';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
@@ -24,7 +24,7 @@ import {
 // ===========================================================================
 
 const GAME_TIME_TEXT_PREFIX = '游戏时间';
-const BP_TEST_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
+const BP_CONE_ACTOR_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
 
 
 // ===========================================================================
@@ -91,7 +91,7 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
         }
 
         if (!this.bp_Btn) {
-            GF.Log(this, '[WBP_Test] bp_Btn missing', GE.LogLevel.Warning);
+            GF.Warn(this, 'bp_Btn missing');
             return;
         }
 
@@ -100,14 +100,14 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
     }
 
     private onToggleButtonClicked(): void {
-        const testActor = UE.GameplayStatics.GetActorOfClass(this, BP_TEST_CLASS) as MovementControlActor | undefined;
+        const coneActor = UE.GameplayStatics.GetActorOfClass(this, BP_CONE_ACTOR_CLASS) as MovementControlActor | undefined;
 
-        if (!testActor || typeof testActor.ToggleMovementPaused !== 'function') {
-            GF.Log(this, '[WBP_Test] BP_Test actor missing or not initialized', GE.LogLevel.Warning);
+        if (!coneActor || typeof coneActor.ToggleMovementPaused !== 'function') {
+            GF.Warn(this, 'BP_ConeActor missing or not initialized');
             return;
         }
 
-        testActor.ToggleMovementPaused();
+        coneActor.ToggleMovementPaused();
     }
 }
 

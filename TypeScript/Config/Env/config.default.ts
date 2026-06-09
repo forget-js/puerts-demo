@@ -16,6 +16,11 @@ export interface AppConfig {
         globalMinLevel: LogLevel;
         moduleMinLevel: Record<string, LogLevel>;
         showScreenLogs: boolean;
+        screenMinLevel: LogLevel;
+        shippingMinLevel: LogLevel;
+        rateLimitDefaults: {
+            seconds: number;
+        };
     };
 }
 
@@ -27,5 +32,10 @@ export const configDefault: AppConfig = {
         globalMinLevel: LogLevel.Log,
         moduleMinLevel: {},
         showScreenLogs: true,
+        screenMinLevel: LogLevel.Log,
+        shippingMinLevel: LogLevel.Warning,
+        rateLimitDefaults: {
+            seconds: 0,
+        },
     },
 };

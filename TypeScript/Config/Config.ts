@@ -23,6 +23,10 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
                 ...base.log.moduleMinLevel,
                 ...override.log?.moduleMinLevel,
             },
+            rateLimitDefaults: {
+                ...base.log.rateLimitDefaults,
+                ...override.log?.rateLimitDefaults,
+            },
         },
     };
 }

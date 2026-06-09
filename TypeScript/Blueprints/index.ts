@@ -7,6 +7,11 @@
 import * as UE from 'ue';
 import { blueprint } from 'puerts';
 import {
+    bindLogContext,
+    registerLogContext,
+    type RegisteredLogContext,
+} from '../Global/Logger';
+import {
     type BlueprintClass,
     type BlueprintDescriptor,
     type BlueprintInstance,
@@ -17,6 +22,49 @@ export * from './_generated/BlueprintCatalog';
 export type { BlueprintClass, BlueprintDescriptor, BlueprintInstance, BlueprintSymbol };
 
 type BlueprintMixinConstructor<TInstance> = new (...args: any[]) => TInstance;
+type BlueprintMixinPrototype = Record<string, unknown>;
+
+const LOG_CONTEXT_WRAPPED = Symbol('LogContextWrapped');
+
+function makeBlueprintLogContext(descriptor: BlueprintDescriptor): RegisteredLogContext {
+    const displayName = descriptor.symbol.replace(/Blueprint$/, '');
+
+    return {
+        displayName,
+        module: displayName,
+    };
+}
+
+function wrapMixinMethodsWithLogContext(mixinClass: BlueprintMixinConstructor<unknown>, context: RegisteredLogContext): void {
+    const prototype = mixinClass.prototype as BlueprintMixinPrototype;
+
+    for (const name of Object.getOwnPropertyNames(prototype)) {
+        if (name === 'constructor') {
+            continue;
+        }
+
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
+        if (!descriptor || typeof descriptor.value !== 'function') {
+            continue;
+        }
+
+        const original = descriptor.value as Function & { [LOG_CONTEXT_WRAPPED]?: boolean };
+        if (original[LOG_CONTEXT_WRAPPED]) {
+            continue;
+        }
+
+        const wrapped = function (this: unknown, ...args: unknown[]) {
+            bindLogContext(this, context);
+            return original.apply(this, args);
+        } as Function & { [LOG_CONTEXT_WRAPPED]?: boolean };
+        wrapped[LOG_CONTEXT_WRAPPED] = true;
+
+        Object.defineProperty(prototype, name, {
+            ...descriptor,
+            value: wrapped,
+        });
+    }
+}
 
 /** 按 Catalog 描述符加载 UE 蓝图生成类。 */
 export function loadBlueprintClass<TDescriptor extends BlueprintDescriptor>(
@@ -44,6 +92,11 @@ export function registerBlueprintMixin<TDescriptor extends BlueprintDescriptor>(
     descriptor: TDescriptor,
     mixinClass: BlueprintMixinConstructor<BlueprintInstance<TDescriptor>>
 ): void {
+    const logContext = makeBlueprintLogContext(descriptor);
+    registerLogContext(mixinClass, logContext);
+    registerLogContext(mixinClass.prototype, logContext);
+    wrapMixinMethodsWithLogContext(mixinClass, logContext);
+
     // Puerts 的 mixin 类型约束基于 InstanceType；这里由 Catalog 的 descriptor 保证两者对应。
     blueprint.mixin(toBlueprintJsClass(descriptor), mixinClass as any);
 }

@@ -20,4 +20,4 @@
 16. 低风险只读或构造类 UE API 可直接使用，如 `GetName()`、简单判断、`new UE.Vector(...)`。
 17. TS 触发表现只调用蓝图 `BP_` 函数，蓝图进入 TS 统一使用 `TS_` 入口。
 18. 不直接调用动画、粒子、音效、UMG 动效等表现 API；表现细节留在蓝图。
-19. 日志使用 `GF.Log` 并带清晰 module 名，避免裸 `console.log`。
+19. 日志使用 `GF.Log` / `GF.Warn` / `GF.Error`，Mixin 模块名前缀自动推导，避免裸 `console.*`。

@@ -13,6 +13,7 @@ import { registerGameModules } from '../Game/register';
 declare const require: (moduleName: string) => unknown;
 
 const MODULE_NAME = 'Bootstrap';
+const LOGGER = GF.CreateLogger(MODULE_NAME);
 
 /**
  * 启动游戏 TypeScript 运行时.
@@ -25,8 +26,7 @@ export function startGame(): ModuleRegistry {
     installGlobalErrorHandlers();
 
     return runSafely(MODULE_NAME, () => {
-        GF.Log(`Starting game scripts (${Config.app.environment}, ${ScriptBuildInfo.version})`, {
-            module: MODULE_NAME,
+        LOGGER.Log(`Starting game scripts (${Config.app.environment}, ${ScriptBuildInfo.version})`, {
             toScreen: false,
         });
 
@@ -41,8 +41,7 @@ export function startGame(): ModuleRegistry {
         registry.startAll();
 
         const diagnostics = createRuntimeDiagnostics(registry.getRegisteredModuleNames());
-        GF.Log(`Game scripts started. Modules: ${diagnostics.modules.join(', ') || 'none'}`, {
-            module: MODULE_NAME,
+        LOGGER.Log(`Game scripts started. Modules: ${diagnostics.modules.join(', ') || 'none'}`, {
             toScreen: false,
         });
 
