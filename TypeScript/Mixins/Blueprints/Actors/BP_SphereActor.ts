@@ -50,9 +50,22 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
     }
 
 
+    // ===========================================================================
+    //                                  定时调用
+    // ===========================================================================
+
+    private onBeginPlayDelayedLog(): void {
+        GF.Log(this, 'BeginPlay 延迟 5 秒后的日志');
+    }
+
+    private onPeriodicTick(): void {
+        GF.Log(this, '每隔 5 秒定时调用');
+    }
+
+
 
     // ===========================================================================
-    //                                  私有方法
+    //                                  碰撞绑定
     // ===========================================================================
 
     private onSphereBeginOverlap(
@@ -77,14 +90,6 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         if (OtherActor) {
             GF.Error(this, `离开物体: ${OtherActor.GetName()}`);
         }
-    }
-
-    private onBeginPlayDelayedLog(): void {
-        GF.Log(this, 'BeginPlay 延迟 5 秒后的日志');
-    }
-
-    private onPeriodicTick(): void {
-        GF.Log(this, '每隔 5 秒定时调用');
     }
 }
 

@@ -1,5 +1,5 @@
 /**
- * [示例] BP_Test: 按蓝图半径 bp_radius 在水平面做圆周运动 (需 Tick).
+ * [模块说明] BP_ConeActor: 按蓝图半径 bp_radius 在水平面做圆周运动 (需 Tick).
  * DONE  1. BeginPlay 记录圆心与起始时间
  * DONE  2. ReceiveTick 使用 DeltaSeconds 按角速度更新位置
  * DONE  3. ReceiveEndPlay 清理运行时状态
@@ -40,7 +40,7 @@ interface OrbitRuntimeState {
     angle: number;
 }
 
-interface BP_TestRuntimeState extends MixinRuntimeState {
+interface BP_ConeActorRuntimeState extends MixinRuntimeState {
     orbit?: OrbitRuntimeState;
     isMovementPaused?: boolean;
 }
@@ -102,8 +102,8 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
         return nextPaused;
     }
 
-    private getRuntimeState(): BP_TestRuntimeState {
-        return getMixinRuntimeState(this) as BP_TestRuntimeState;
+    private getRuntimeState(): BP_ConeActorRuntimeState {
+        return getMixinRuntimeState(this) as BP_ConeActorRuntimeState;
     }
 
 

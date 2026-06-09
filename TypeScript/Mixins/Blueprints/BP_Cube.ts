@@ -1,5 +1,5 @@
 /**
- * [示例] BP_Cube: 本地旋转演示 (需 Tick).
+ * [模块说明] BP_Cube: 本地旋转演示 (需 Tick).
  * DONE  1. ReceiveTick 驱动绕 Z 轴旋转 (蓝图 Event Graph 需启用 Tick)
  */
 import * as UE from 'ue';
@@ -11,8 +11,18 @@ import {
 } from '../../Blueprints';
 import { GF } from '../../Global';
 
+
+
+// ===========================================================================
+//                           Blueprint Mixin 绑定
+// ===========================================================================
+
 interface BP_CubeMixin extends BlueprintInstance<typeof BP_CubeBlueprint> { }
 class BP_CubeMixin implements BP_CubeMixin {
+
+    // ===========================================================================
+    //                                生命周期函数
+    // ===========================================================================
 
     ReceiveBeginPlay(): void {
         GF.Log(this, 'ts log');
@@ -23,5 +33,7 @@ class BP_CubeMixin implements BP_CubeMixin {
         this.K2_AddActorLocalRotation(new UE.Rotator(0, 0, DeltaSeconds * 10), false, $ref<UE.HitResult>(), false);
     }
 }
+
+
 
 registerBlueprintMixin(BP_CubeBlueprint, BP_CubeMixin);

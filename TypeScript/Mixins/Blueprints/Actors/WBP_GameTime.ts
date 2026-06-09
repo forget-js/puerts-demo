@@ -31,8 +31,6 @@ const BP_CONE_ACTOR_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
 //                                   运行时状态
 // ===========================================================================
 
-// 需要自定义运行时状态时, 扩展 MixinRuntimeState 并在此声明 interface:
-//
 interface MovementControlActor extends BlueprintInstance<typeof BP_ConeActorBlueprint> {
     ToggleMovementPaused(): boolean;
 }
