@@ -5,7 +5,11 @@
  * DONE  3. ReceiveEndPlay 清理运行时状态
  */
 import * as UE from 'ue';
-import { blueprint } from 'puerts';
+import {
+    BP_ActorBlueprint,
+    registerBlueprintMixin,
+    type BlueprintInstance,
+} from '../../../Blueprints';
 import { GF } from '../../../Global';
 import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 
@@ -15,10 +19,7 @@ import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Actor.BP_Actor_C");
-const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C>(uclass);
-
-interface BP_ActorMixin extends UE.Game.Blueprints.Actors.BP_Actor.BP_Actor_C { }
+interface BP_ActorMixin extends BlueprintInstance<typeof BP_ActorBlueprint> { }
 class BP_ActorMixin implements BP_ActorMixin {
 
     // ===========================================================================
@@ -89,4 +90,4 @@ class BP_ActorMixin implements BP_ActorMixin {
 
 
 
-blueprint.mixin(jsClass, BP_ActorMixin);
+registerBlueprintMixin(BP_ActorBlueprint, BP_ActorMixin);

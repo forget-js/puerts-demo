@@ -8,7 +8,11 @@
  * Tick 说明: 该示例需要每帧驱动 Actor 位移；实例较多时应改为 Timer、Timeline 或蓝图表现层方案。
  */
 import * as UE from 'ue';
-import { blueprint } from 'puerts';
+import {
+    BP_ConeActorBlueprint,
+    registerBlueprintMixin,
+    type BlueprintInstance,
+} from '../../../Blueprints';
 import { GF, GE } from '../../../Global';
 import {
     clearMixinRuntimeState,
@@ -47,11 +51,8 @@ interface BP_TestRuntimeState extends MixinRuntimeState {
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_Test.BP_Test_C");
-const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_Test.BP_Test_C>(uclass);
-
-interface BP_TestMixin extends UE.Game.Blueprints.Actors.BP_Test.BP_Test_C { }
-class BP_TestMixin implements BP_TestMixin {
+interface BP_ConeActorMixin extends BlueprintInstance<typeof BP_ConeActorBlueprint> { }
+class BP_ConeActorMixin implements BP_ConeActorMixin {
 
     // ===========================================================================
     //                                生命周期函数
@@ -137,4 +138,4 @@ class BP_TestMixin implements BP_TestMixin {
 
 
 
-blueprint.mixin(jsClass, BP_TestMixin);
+registerBlueprintMixin(BP_ConeActorBlueprint, BP_ConeActorMixin);

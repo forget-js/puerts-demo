@@ -3,12 +3,14 @@
  * DONE  1. ReceiveTick 驱动绕 Z 轴旋转 (蓝图 Event Graph 需启用 Tick)
  */
 import * as UE from 'ue';
-import { $ref, blueprint } from 'puerts';
+import { $ref } from 'puerts';
+import {
+    BP_CubeBlueprint,
+    registerBlueprintMixin,
+    type BlueprintInstance,
+} from '../../Blueprints';
 
-const uclass = UE.Class.Load("/Game/Blueprints/BP_Cube.BP_Cube_C");
-const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.BP_Cube.BP_Cube_C>(uclass);
-
-interface BP_CubeMixin extends UE.Game.Blueprints.BP_Cube.BP_Cube_C { }
+interface BP_CubeMixin extends BlueprintInstance<typeof BP_CubeBlueprint> { }
 class BP_CubeMixin implements BP_CubeMixin {
 
     ReceiveBeginPlay(): void {
@@ -21,4 +23,4 @@ class BP_CubeMixin implements BP_CubeMixin {
     }
 }
 
-blueprint.mixin(jsClass, BP_CubeMixin);
+registerBlueprintMixin(BP_CubeBlueprint, BP_CubeMixin);

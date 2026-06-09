@@ -4,7 +4,13 @@
  * DONE  2. 点击按钮暂停/恢复 BP_Test 运动
  */
 import * as UE from 'ue';
-import { blueprint } from 'puerts';
+import {
+    BP_ConeActorBlueprint,
+    WBP_GameTimeBlueprint,
+    loadBlueprintClass,
+    registerBlueprintMixin,
+    type BlueprintInstance,
+} from '../../../Blueprints';
 import { GF, GE } from '../../../Global';
 import {
     clearMixinRuntimeState,
@@ -18,7 +24,7 @@ import {
 // ===========================================================================
 
 const GAME_TIME_TEXT_PREFIX = '游戏时间';
-const BP_TEST_CLASS = UE.Class.Load("/Game/Blueprints/Actors/BP_Test.BP_Test_C");
+const BP_TEST_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
 
 
 // ===========================================================================
@@ -27,7 +33,7 @@ const BP_TEST_CLASS = UE.Class.Load("/Game/Blueprints/Actors/BP_Test.BP_Test_C")
 
 // 需要自定义运行时状态时, 扩展 MixinRuntimeState 并在此声明 interface:
 //
-interface MovementControlActor extends UE.Actor {
+interface MovementControlActor extends BlueprintInstance<typeof BP_ConeActorBlueprint> {
     ToggleMovementPaused(): boolean;
 }
 
@@ -40,11 +46,8 @@ interface WBP_TestRuntimeState extends MixinRuntimeState {
 //                            Blueprint Mixin 绑定
 // ===========================================================================
 
-const uclass = UE.Class.Load("/Game/Blueprints/Actors/WBP_Test.WBP_Test_C");
-const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.WBP_Test.WBP_Test_C>(uclass);
-
-interface WBP_TestMixin extends UE.Game.Blueprints.Actors.WBP_Test.WBP_Test_C { }
-class WBP_TestMixin implements WBP_TestMixin {
+interface WBP_GameTimeMixin extends BlueprintInstance<typeof WBP_GameTimeBlueprint> { }
+class WBP_GameTimeMixin implements WBP_GameTimeMixin {
 
     // ===========================================================================
     //                                生命周期函数
@@ -109,4 +112,4 @@ class WBP_TestMixin implements WBP_TestMixin {
 }
 
 
-blueprint.mixin(jsClass, WBP_TestMixin);
+registerBlueprintMixin(WBP_GameTimeBlueprint, WBP_GameTimeMixin);

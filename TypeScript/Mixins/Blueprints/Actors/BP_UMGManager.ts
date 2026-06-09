@@ -5,7 +5,12 @@
  * DONE  3. ReceiveEndPlay 清理控件与运行时状态
  */
 import * as UE from 'ue';
-import { blueprint } from 'puerts';
+import {
+    BP_UMGManagerBlueprint,
+    WBP_GameTimeBlueprint,
+    registerBlueprintMixin,
+    type BlueprintInstance,
+} from '../../../Blueprints';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
@@ -29,7 +34,7 @@ interface WBP_TestDisplay {
     SetGameSecond(GameSecond: number): void;
 }
 
-type GameTimeWidget = UE.Game.Blueprints.Actors.WBP_Test.WBP_Test_C & WBP_TestDisplay;
+type GameTimeWidget = BlueprintInstance<typeof WBP_GameTimeBlueprint> & WBP_TestDisplay;
 
 interface BP_UMGManagerRuntimeState extends MixinRuntimeState {
     gameTimeWidget?: GameTimeWidget;
@@ -40,10 +45,7 @@ interface BP_UMGManagerRuntimeState extends MixinRuntimeState {
 //                            Blueprint Mixin 绑定
 // ===========================================================================
 
-const uclass = UE.Class.Load("/Game/Blueprints/Actors/BP_UMGManager.BP_UMGManager_C");
-const jsClass = blueprint.tojs<typeof UE.Game.Blueprints.Actors.BP_UMGManager.BP_UMGManager_C>(uclass);
-
-interface BP_UMGManagerMixin extends UE.Game.Blueprints.Actors.BP_UMGManager.BP_UMGManager_C { }
+interface BP_UMGManagerMixin extends BlueprintInstance<typeof BP_UMGManagerBlueprint> { }
 class BP_UMGManagerMixin implements BP_UMGManagerMixin {
 
     // ===========================================================================
@@ -96,4 +98,4 @@ class BP_UMGManagerMixin implements BP_UMGManagerMixin {
 }
 
 
-blueprint.mixin(jsClass, BP_UMGManagerMixin);
+registerBlueprintMixin(BP_UMGManagerBlueprint, BP_UMGManagerMixin);
