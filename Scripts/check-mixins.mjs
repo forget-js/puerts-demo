@@ -1,63 +1,34 @@
 /**
- * Mixin 静态校验与 mixin-imports 一致性检查.
+ * Mixin 静态校验与生成产物一致性检查.
  *
- * 由 npm run check:mixin 调用 (check 流程的一部分). 校验:
- * 1. 每个 Mixin 文件有且仅有一个 UE.Class.Load, 且路径与蓝图资产目录映射一致
- * 2. TypeScript/Mixins/_generated/mixin-imports.ts 与当前 Mixin 文件列表同步
- *
- * CLI 可选参数 (均相对 project):
- *   --project=          项目根, 默认 cwd
- *   --mixin-root=       Mixin 扫描目录, 默认 TypeScript/Mixins/Blueprints
- *   --index=            生成索引路径, 默认 TypeScript/Mixins/_generated/mixin-imports.ts
- *   --blueprint-root=   UE 资产根, 默认 /Game/Blueprints
+ * 校验:
+ * 1. 手写 TypeScript 禁止直接硬编码 UE.Class.Load('/Game/...') 和 UE.Game.Blueprints 类型路径
+ * 2. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
+ * 3. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  loadManifest,
+  makeCatalogSource,
+  normalizeProjectRelativePath,
+  toProjectPath,
+  walkTypeScriptFiles,
+} from '../Plugins/PuertsMixinAutomation/Scripts/blueprint-manifest-utils.mjs';
 
 const args = process.argv.slice(2);
 
-/** 解析 --name=value 形式 CLI 参数, 无则返回 fallback. */
 function readArg(name, fallback) {
   const prefix = `--${name}=`;
   const value = args.find((arg) => arg.startsWith(prefix));
   return value ? value.slice(prefix.length) : fallback;
 }
 
-/** 规范化 UE 资产根路径: 前导 /、去尾斜杠. */
-function normalizeAssetRoot(assetRoot) {
-  let normalized = assetRoot.trim().replace(/\\/g, '/');
-  if (!normalized) {
-    normalized = '/Game/Blueprints';
-  }
-  if (!normalized.startsWith('/')) {
-    normalized = `/${normalized}`;
-  }
-  while (normalized.length > 1 && normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
-  }
-  return normalized;
+function normalizeNewlines(source) {
+  return source.replace(/\r\n/g, '\n');
 }
 
-/** 递归收集 mixinRoot 下所有 .ts 源文件 (排除 .d.ts). */
-function walk(dir) {
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      return walk(entryPath);
-    }
-    if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
-      return [entryPath];
-    }
-    return [];
-  });
-}
-
-/** 将绝对路径转为相对 index 目录的 import 字符串. */
 function toImportPath(indexDir, file) {
   let importPath = path.relative(indexDir, file).replace(/\\/g, '/').replace(/\.ts$/, '');
   if (!importPath.startsWith('.')) {
@@ -66,10 +37,12 @@ function toImportPath(indexDir, file) {
   return importPath;
 }
 
-/** 根据当前 Mixin 文件列表生成 mixin-imports.ts 应有内容. */
-function makeIndexSource(mixinRoot, indexFile) {
+function makeIndexSource(projectRoot, manifest, indexFile) {
   const indexDir = path.dirname(indexFile);
-  const imports = walk(mixinRoot)
+  const imports = manifest.blueprints
+    .filter((entry) => !entry.missing && entry.autoManaged !== false)
+    .map((entry) => toProjectPath(projectRoot, normalizeProjectRelativePath(entry.mixinFile)))
+    .filter((file) => fs.existsSync(file))
     .sort((a, b) => a.localeCompare(b))
     .map((file) => `import "${toImportPath(indexDir, file)}";`);
 
@@ -80,48 +53,97 @@ function makeIndexSource(mixinRoot, indexFile) {
   ].join('\n');
 }
 
-/** 统一换行符, 避免 Windows/CI 下 CRLF 与 LF 导致误报不同步. */
-function normalizeNewlines(source) {
-  return source.replace(/\r\n/g, '\n');
+function isGeneratedFile(file, catalogFile) {
+  const normalized = path.resolve(file).replace(/\\/g, '/');
+  return normalized === path.resolve(catalogFile).replace(/\\/g, '/')
+    || normalized.includes('/TypeScript/Mixins/_generated/');
 }
 
-/**
- * 校验单个 Mixin: Class.Load 路径须与文件相对路径一一对应.
- * 例: Mixins/Blueprints/Actors/BP_Actor.ts -> /Game/Blueprints/Actors/BP_Actor.BP_Actor_C
- */
-function checkMixinFile(file, mixinRoot, blueprintRoot) {
-  const source = fs.readFileSync(file, 'utf8');
-  const matches = [...source.matchAll(/UE\.Class\.Load\(\s*["']([^"']+)["']\s*\)/g)];
-  const relativeFile = path.relative(mixinRoot, file).replace(/\\/g, '/');
-  const relativePackagePath = relativeFile.replace(/\.ts$/, '');
-  const assetName = relativePackagePath.split('/').pop();
-  const expectedClassPath = `${blueprintRoot}/${relativePackagePath}.${assetName}_C`;
+function checkNoHardcodedBlueprintReferences(projectRoot, catalogFile) {
+  const errors = [];
+  const typeScriptRoot = path.resolve(projectRoot, 'TypeScript');
+  for (const file of walkTypeScriptFiles(typeScriptRoot)) {
+    if (isGeneratedFile(file, catalogFile)) {
+      continue;
+    }
 
-  if (matches.length !== 1) {
-    return [`${relativeFile}: expected exactly one UE.Class.Load(...) call, found ${matches.length}.`];
+    const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
+    const source = fs.readFileSync(file, 'utf8');
+    if (/UE\.Class\.Load\(\s*["']\/Game\//.test(source)) {
+      errors.push(`${relativeFile}: do not hardcode UE.Class.Load('/Game/...'); use BlueprintCatalog APIs.`);
+    }
+    if (/UE\.Game\.Blueprints\./.test(source)) {
+      errors.push(`${relativeFile}: do not reference UE.Game.Blueprints directly; use BlueprintInstance<typeof XxxBlueprint>.`);
+    }
+  }
+  return errors;
+}
+
+function checkManifestEntries(projectRoot, manifest) {
+  const errors = [];
+  for (const entry of manifest.blueprints.filter((item) => !item.missing)) {
+    const mixinFile = toProjectPath(projectRoot, normalizeProjectRelativePath(entry.mixinFile));
+    const relativeFile = path.relative(projectRoot, mixinFile).replace(/\\/g, '/');
+    if (!fs.existsSync(mixinFile)) {
+      errors.push(`${entry.mixinFile}: mixin file listed in manifest does not exist.`);
+      continue;
+    }
+
+    const source = fs.readFileSync(mixinFile, 'utf8');
+    if (!new RegExp(`\\b${entry.catalogSymbol}\\b`).test(source)) {
+      errors.push(`${relativeFile}: missing catalog symbol ${entry.catalogSymbol}.`);
+    }
+    if (!new RegExp(`\\b${entry.mixinClassName}\\b`).test(source)) {
+      errors.push(`${relativeFile}: missing mixin class ${entry.mixinClassName}.`);
+    }
+    if (!new RegExp(`registerBlueprintMixin\\(\\s*${entry.catalogSymbol}\\s*,\\s*${entry.mixinClassName}\\s*\\)`).test(source)) {
+      errors.push(`${relativeFile}: missing registerBlueprintMixin(${entry.catalogSymbol}, ${entry.mixinClassName}).`);
+    }
+  }
+  return errors;
+}
+
+function checkPreviousSymbols(projectRoot, manifest, catalogFile) {
+  const errors = [];
+  const previousSymbols = manifest.blueprints.flatMap((entry) => entry.previousCatalogSymbols ?? []);
+  if (previousSymbols.length === 0) {
+    return errors;
   }
 
-  const actualClassPath = matches[0][1].replace(/\\/g, '/');
-  if (actualClassPath !== expectedClassPath) {
-    return [`${relativeFile}: UE.Class.Load path mismatch. Expected "${expectedClassPath}", got "${actualClassPath}".`];
+  for (const file of walkTypeScriptFiles(path.resolve(projectRoot, 'TypeScript'))) {
+    if (isGeneratedFile(file, catalogFile)) {
+      continue;
+    }
+    const source = fs.readFileSync(file, 'utf8');
+    const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
+    for (const symbol of previousSymbols) {
+      if (new RegExp(`\\b${symbol}\\b`).test(source)) {
+        errors.push(`${relativeFile}: references renamed catalog symbol ${symbol}.`);
+      }
+    }
   }
-
-  return [];
+  return errors;
 }
 
 const projectRoot = path.resolve(readArg('project', process.cwd()));
-const mixinRoot = path.resolve(projectRoot, readArg('mixin-root', 'TypeScript/Mixins/Blueprints'));
 const indexFile = path.resolve(projectRoot, readArg('index', 'TypeScript/Mixins/_generated/mixin-imports.ts'));
-const blueprintRoot = normalizeAssetRoot(readArg('blueprint-root', '/Game/Blueprints'));
+const manifestFile = path.resolve(projectRoot, readArg('manifest', 'TypeScript/Mixins/_generated/blueprint-manifest.json'));
+const catalogFile = path.resolve(projectRoot, readArg('catalog', 'TypeScript/Blueprints/_generated/BlueprintCatalog.ts'));
 
 const errors = [];
+const manifest = loadManifest(manifestFile);
 
-for (const file of walk(mixinRoot)) {
-  errors.push(...checkMixinFile(file, mixinRoot, blueprintRoot));
+errors.push(...checkNoHardcodedBlueprintReferences(projectRoot, catalogFile));
+errors.push(...checkManifestEntries(projectRoot, manifest));
+errors.push(...checkPreviousSymbols(projectRoot, manifest, catalogFile));
+
+const expectedCatalogSource = makeCatalogSource(manifest);
+const actualCatalogSource = fs.existsSync(catalogFile) ? fs.readFileSync(catalogFile, 'utf8') : '';
+if (normalizeNewlines(actualCatalogSource) !== expectedCatalogSource) {
+  errors.push(`${path.relative(projectRoot, catalogFile)} is out of date. Run npm run gen:blueprint-catalog.`);
 }
 
-// 与 gen:mixin-index 产出比对; 不同步时提示先运行 npm run gen:mixin-index.
-const expectedIndexSource = makeIndexSource(mixinRoot, indexFile);
+const expectedIndexSource = makeIndexSource(projectRoot, manifest, indexFile);
 const actualIndexSource = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, 'utf8') : '';
 if (normalizeNewlines(actualIndexSource) !== expectedIndexSource) {
   errors.push(`${path.relative(projectRoot, indexFile)} is out of date. Run npm run gen:mixin-index.`);
@@ -135,4 +157,4 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`[check-mixins] ok (${walk(mixinRoot).length} mixin file(s))`);
+console.log(`[check-mixins] ok (${manifest.blueprints.filter((entry) => !entry.missing).length} manifest blueprint(s))`);

@@ -4,13 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npm run gen:build-info && npm run gen:mixin-index && tsc",
-    "check": "npm run gen:mixin-index && npm run check:mixin && tsc --noEmit",
+    "build": "npm run gen:build-info && npm run gen:blueprint-catalog && npm run gen:mixin-index && tsc",
+    "check": "npm run gen:blueprint-catalog && npm run gen:mixin-index && npm run check:mixin && tsc --noEmit",
     "check:mixin": "node Scripts/check-mixins.mjs",
+    "gen:blueprint-catalog": "node Plugins/PuertsMixinAutomation/Scripts/generate-blueprint-catalog.mjs",
     "gen:build-info": "node Scripts/write-build-info.mjs",
     "gen:mixin-index": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-index.mjs",
     "gen:mixin-template": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs",
-    "start": "npm run gen:mixin-index && tsc --watch"
+    "start": "npm run gen:blueprint-catalog && npm run gen:mixin-index && tsc --watch"
   },
   "keywords": [],
   "author": "",
