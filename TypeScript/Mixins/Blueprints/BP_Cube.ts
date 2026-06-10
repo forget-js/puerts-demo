@@ -12,7 +12,7 @@ import {
 } from '../../Blueprints';
 import { GF } from '../../Global';
 import { Api, setupTestMockTransport } from '../../Game/Services';
-import { HttpError } from '../../Runtime';
+import { HttpError, UnrealHttpTransport } from '../../Runtime';
 
 
 
@@ -62,6 +62,8 @@ class BP_CubeMixin implements BP_CubeMixin {
                 ? `${error.kind}: ${error.message}`
                 : String(error);
             GF.Warn(this, 'test HTTP demo failed', { context: { message }, toScreen: false });
+        } finally {
+            Api.setTransport(new UnrealHttpTransport());
         }
     }
 

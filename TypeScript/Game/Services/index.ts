@@ -12,3 +12,12 @@ export {
     type TestApi,
     type TestItemDto,
 } from './test.api';
+export {
+    createTestUserApi,
+    TestUserRoutes,
+    type CreateUserRequestDto,
+    type EmptyResponseDto,
+    type TestUserApi,
+    type UpdateUserRequestDto,
+    type UserDto,
+} from './testUser.api';

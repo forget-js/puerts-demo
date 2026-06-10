@@ -23,7 +23,7 @@ export const configDev: Partial<AppConfig> = {
     },
     /** 本地 API 地址; 复制为 config.dev.ts 后按实际后端修改. */
     http: {
-        baseUrl: 'https://api.example.com',
+        baseUrl: 'https://m1.apifoxmock.com/m1/7256272-6983470-default',
         timeoutMs: 15000,
         defaultHeaders: {
             Accept: 'application/json',

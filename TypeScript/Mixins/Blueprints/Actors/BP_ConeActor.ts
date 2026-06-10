@@ -13,10 +13,13 @@ import {
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../../Blueprints';
-import { GF } from '../../../Global';
+import { GF, GE } from '../../../Global';
+import { Api } from '../../../Game/Services';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
+    HttpError,
+    UnrealHttpTransport,
     type MixinRuntimeState,
 } from '../../../Runtime';
 
@@ -65,6 +68,7 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
             angle: 0,
         };
         state.isMovementPaused = false;
+        void this.runTestUserHttpDemo();
     }
 
     ReceiveTick(DeltaSeconds: number): void {
@@ -139,6 +143,47 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
         );
 
         GF.SetActorLocation(this, newLocation);
+    }
+
+
+
+    // ===========================================================================
+    //                                  测试域 HTTP 演示
+    // ===========================================================================
+
+    private async runTestUserHttpDemo(): Promise<void> {
+        // BP_Cube 等演示会把 Api 切到 MockHttpTransport; 联调 Apifox 前恢复真实 Transport.
+        Api.setTransport(new UnrealHttpTransport());
+
+        const options = { owner: this };
+        const demoUser = {
+            username: 'ConeDemoUser',
+            firstName: 'Cone',
+            lastName: 'Actor',
+            email: 'cone.demo@example.com',
+            password: 'demo-password',
+            phone: '13800000000',
+            userStatus: 0,
+        };
+
+        try {
+            await Api.testUser.createUser(demoUser, options);
+            GF.LogPrettyJson(this, 'testUser.createUser', { username: demoUser.username });
+
+            const user = await Api.testUser.getUserByName(demoUser.username, options);
+            GF.LogPrettyJson(this, 'testUser.getUserByName', user);
+
+            await Api.testUser.updateUser(demoUser.username, { ...user, firstName: 'ConeUpdated' }, options);
+            GF.LogPrettyJson(this, 'testUser.updateUser', { username: demoUser.username });
+
+            await Api.testUser.deleteUser(demoUser.username, options);
+            GF.LogPrettyJson(this, 'testUser.deleteUser', { username: demoUser.username });
+        } catch (error) {
+            const message = error instanceof HttpError
+                ? `${error.kind}: ${error.message}${error.url ? ` (${error.method ?? '?'} ${error.url})` : ''}`
+                : String(error);
+            GF.LogPrettyJson(this, 'testUser HTTP demo failed', { message }, { level: GE.LogLevel.Warning });
+        }
     }
 }
 
