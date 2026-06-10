@@ -98,6 +98,12 @@ export interface LogFunction {
     (worldContext: UE.Object, message: string, options: LogOptionsWithoutContext): void;
 }
 
+/** GF.LogPrettyJson: 按行输出格式化 JSON */
+export interface LogPrettyJsonFunction {
+    (label: string, value: unknown, options?: LogOptions): void;
+    (worldContext: UE.Object, label: string, value: unknown, options?: LogOptionsWithoutContext): void;
+}
+
 /** 将日志上下文绑定到指定对象（通常为 Actor 实例或类构造函数） */
 export function registerLogContext(target: object, context: RegisteredLogContext): void {
     registeredLogContexts.set(target, context);
@@ -323,6 +329,45 @@ function normalizeLogArgs(
 
     // Log(actor, message, options)
     return { message, options: { ...arg2, worldContext } };
+}
+
+function logPrettyJsonLines(label: string, value: unknown, options: LogOptions = {}): void {
+    const logOptions: LogOptions = { toScreen: false, ...options };
+
+    let pretty: string;
+    try {
+        pretty = JSON.stringify(value, null, 2);
+    } catch {
+        emitLog(`${label} ${String(value)}`, logOptions);
+        return;
+    }
+
+    for (const line of pretty.split('\n')) {
+        emitLog(`${label} ${line}`, logOptions);
+    }
+}
+
+/**
+ * 按行输出 indent 后的 JSON; Output Log 不自动换行, 避免单行过长被截断.
+ * 支持 LogPrettyJson(label, value, options?) 与 LogPrettyJson(actor, label, value, options?).
+ */
+export function logPrettyJsonWithArgs(
+    arg0: string | UE.Object,
+    arg1: string | unknown,
+    arg2?: unknown | LogOptions | LogOptionsWithoutContext,
+    arg3?: LogOptionsWithoutContext
+): void {
+    if (typeof arg0 === 'string') {
+        const label = arg0;
+        const value = arg1;
+        const options =
+            typeof arg2 === 'object' && arg2 !== null ? (arg2 as LogOptions) : {};
+        logPrettyJsonLines(label, value, options);
+        return;
+    }
+
+    const label = typeof arg1 === 'string' ? arg1 : '';
+    logPrettyJsonLines(label, arg2, { ...(arg3 ?? {}), worldContext: arg0 });
 }
 
 /** GF.Log 的实现入口，委托 normalizeLogArgs + emitLog */

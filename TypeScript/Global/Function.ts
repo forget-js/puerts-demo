@@ -10,10 +10,12 @@ import { $ref } from 'puerts';
 import { LogLevel } from './Enums';
 import {
     createLogger,
+    logPrettyJsonWithArgs,
     logWithArgs,
     logWithLevel,
     type LevelLogFunction,
     type LogFunction,
+    type LogPrettyJsonFunction,
     type Logger,
     type LogOptions,
     type LogOptionsWithoutContext,
@@ -34,6 +36,8 @@ export interface GlobalFunction {
     Verbose: LevelLogFunction;
     Warn: LevelLogFunction;
     Error: LevelLogFunction;
+
+    LogPrettyJson: LogPrettyJsonFunction;
 
     CreateLogger(displayName: string): Logger;
 }
@@ -83,6 +87,15 @@ export const GF: GlobalFunction = {
         arg2?: LogOptionsWithoutContext
     ): void {
         logWithLevel(LogLevel.Error, arg0, arg1, arg2);
+    },
+
+    LogPrettyJson(
+        arg0: string | UE.Object,
+        arg1: string | unknown,
+        arg2?: unknown | LogOptions | LogOptionsWithoutContext,
+        arg3?: LogOptionsWithoutContext
+    ): void {
+        logPrettyJsonWithArgs(arg0, arg1, arg2, arg3);
     },
 
     CreateLogger(displayName: string): Logger {
