@@ -21,4 +21,19 @@ export const configDev: Partial<AppConfig> = {
             BP_ConeActor: LogLevel.Verbose,
         },
     },
+    /** 本地 API 地址; 复制为 config.dev.ts 后按实际后端修改. */
+    http: {
+        baseUrl: 'https://api.example.com',
+        timeoutMs: 15000,
+        defaultHeaders: {
+            Accept: 'application/json',
+        },
+        retry: {
+            attempts: 1,
+            baseDelayMs: 250,
+            maxDelayMs: 2000,
+            retryMethods: ['GET', 'HEAD'],
+            retryStatusCodes: [408, 429, 500, 502, 503, 504],
+        },
+    },
 };

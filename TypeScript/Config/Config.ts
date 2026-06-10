@@ -7,7 +7,7 @@
 import { configDefault, type AppConfig } from './Env/config.default';
 import { configDev } from './Env/config.dev';
 
-/** 深度合并 app / log, moduleMinLevel 按 key 叠加而非整体覆盖. */
+/** 深度合并 app / log / http, key-value 配置按 key 叠加而非整体覆盖. */
 function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
     return {
         ...base,
@@ -26,6 +26,18 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
             rateLimitDefaults: {
                 ...base.log.rateLimitDefaults,
                 ...override.log?.rateLimitDefaults,
+            },
+        },
+        http: {
+            ...base.http,
+            ...override.http,
+            defaultHeaders: {
+                ...base.http.defaultHeaders,
+                ...override.http?.defaultHeaders,
+            },
+            retry: {
+                ...base.http.retry,
+                ...override.http?.retry,
             },
         },
     };
