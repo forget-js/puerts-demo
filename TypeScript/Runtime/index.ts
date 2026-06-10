@@ -3,6 +3,7 @@ export { ScriptBuildInfo, type ScriptBuildInfo as ScriptBuildInfoShape } from '.
 export { createRuntimeDiagnostics, type RuntimeDiagnostics } from './Diagnostics';
 export { DelegateBag, type RemovableDelegate } from './DelegateBag';
 export { installGlobalErrorHandlers, reportError, runSafely } from './ErrorBoundary';
+export * from './Http';
 export { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from './MixinState';
 export { type GameModule, ModuleRegistry } from './ModuleRegistry';
 export { TimerBag } from './TimerBag';

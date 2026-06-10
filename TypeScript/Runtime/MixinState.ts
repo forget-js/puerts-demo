@@ -1,17 +1,19 @@
 /**
- * 按 Mixin 实例隔离的运行时资源 (委托、定时器).
+ * 按 Mixin 实例隔离的运行时资源 (委托、定时器、HTTP 请求).
  *
  * 每个 Actor / Widget 等 owner 对应一份 {@link MixinRuntimeState}, 在 ReceiveBeginPlay
  * 中通过 getMixinRuntimeState(this) 获取, 在 ReceiveEndPlay 中必须 clearMixinRuntimeState(this).
  */
 
 import { DelegateBag } from './DelegateBag';
+import { HttpRequestBag } from './Http/HttpRequestBag';
 import { TimerBag } from './TimerBag';
 
-/** 单个 Mixin 实例持有的可清理运行时资源. */
+/** 单个 Mixin 实例持有的可清理运行时资源 (含 HttpRequestBag). */
 export interface MixinRuntimeState {
     readonly delegates: DelegateBag;
     readonly timers: TimerBag;
+    readonly requests: HttpRequestBag;
 }
 
 type UnrealObjectLike = object & {
@@ -40,6 +42,7 @@ function createMixinRuntimeState(): MixinRuntimeState {
     return {
         delegates: new DelegateBag(),
         timers: new TimerBag(),
+        requests: new HttpRequestBag(),
     };
 }
 
@@ -71,7 +74,7 @@ export function getMixinRuntimeState(owner: object): MixinRuntimeState {
 }
 
 /**
- * 解绑委托、取消定时器并移除状态; 须在 ReceiveEndPlay 中调用.
+ * 解绑委托、取消定时器与 HTTP 请求并移除状态; 须在 ReceiveEndPlay 中调用.
  * @param owner 与 getMixinRuntimeState 传入的同一实例.
  */
 export function clearMixinRuntimeState(owner: object): void {
@@ -83,6 +86,7 @@ export function clearMixinRuntimeState(owner: object): void {
 
     state.delegates.clear();
     state.timers.clearAll();
+    state.requests.cancelAll();
 
     if (objectKey) {
         mixinStatesByObjectKey.delete(objectKey);
