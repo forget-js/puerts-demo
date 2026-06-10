@@ -77,7 +77,7 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         SweepResult: UE.HitResult
     ): void {
         if (OtherActor) {
-            GF.Warn(this, `触碰物体: ${OtherActor.GetName()}`);
+            GF.Log(this, `触碰物体: ${OtherActor.GetName()}`);
         }
     }
 
@@ -88,7 +88,7 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         OtherBodyIndex: number
     ): void {
         if (OtherActor) {
-            GF.Error(this, `离开物体: ${OtherActor.GetName()}`);
+            GF.Log(this, `离开物体: ${OtherActor.GetName()}`);
         }
     }
 }
