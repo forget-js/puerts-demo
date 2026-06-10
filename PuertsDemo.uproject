@@ -27,6 +27,10 @@
 			"TargetAllowList": [
 				"Editor"
 			]
+		},
+		{
+			"Name": "PuertsHttpTransport",
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [

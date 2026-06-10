@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "FriendlyName": "Puerts HTTP Transport",
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "Description": "Reusable Unreal HTTP transport bridge for Puerts TypeScript projects.",
+  "Category": "Programming",
+  "CreatedBy": "PuertsDemo",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "Modules": [
+    {
+      "Name": "PuertsHttpTransport",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ]
+}
