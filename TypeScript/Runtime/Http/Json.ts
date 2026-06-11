@@ -99,7 +99,7 @@ export function parseResponseBody<T>(response: HttpTransportResponse, responseTy
     }
 
     if (response.body.length === 0) {
-        return undefined as T;
+        return undefined as unknown as T;
     }
 
     const contentType = findHeader(response.headers, 'content-type');
