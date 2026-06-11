@@ -22,10 +22,7 @@ export class DelegateBag {
      * 注册委托回调并记录解绑闭包.
      * @param callback 已绑定 this 的函数引用; 若需 bind, 请用 {@link DelegateBag.bind}.
      */
-    add<TCallback extends DelegateCallback>(
-        delegate: RemovableDelegate<TCallback>,
-        callback: TCallback
-    ): TCallback {
+    add<TCallback extends DelegateCallback>(delegate: RemovableDelegate<TCallback>, callback: TCallback): TCallback {
         delegate.Add(callback);
         // 闭包捕获 Add 时传入的 callback 引用, 保证 Remove 能命中同一函数.
         this.removers.push(() => delegate.Remove(callback));

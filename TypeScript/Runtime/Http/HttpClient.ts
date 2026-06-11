@@ -86,9 +86,17 @@ export class HttpClient {
 
         const promise = new Promise<T>((resolve, reject) => {
             rejectTask = reject;
-            this.runRequest<T>(options, method, url, retry, () => activeTask, (task) => {
-                activeTask = task;
-            }, () => canceled).then(resolve, reject);
+            this.runRequest<T>(
+                options,
+                method,
+                url,
+                retry,
+                () => activeTask,
+                (task) => {
+                    activeTask = task;
+                },
+                () => canceled
+            ).then(resolve, reject);
         }) as HttpTask<T>;
 
         // Transport 异步启动, requestId 在 send 返回后才可用, 故用 getter 延迟读取.
@@ -117,11 +125,19 @@ export class HttpClient {
         return this.request<T>({ ...options, url, method: 'GET' });
     }
 
-    post<T = unknown>(url: string, body?: unknown, options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}): HttpTask<T> {
+    post<T = unknown>(
+        url: string,
+        body?: unknown,
+        options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}
+    ): HttpTask<T> {
         return this.request<T>({ ...options, url, method: 'POST', body });
     }
 
-    put<T = unknown>(url: string, body?: unknown, options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}): HttpTask<T> {
+    put<T = unknown>(
+        url: string,
+        body?: unknown,
+        options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}
+    ): HttpTask<T> {
         return this.request<T>({ ...options, url, method: 'PUT', body });
     }
 
@@ -304,11 +320,13 @@ export class HttpClient {
 
     /** 每个请求最多尝试一次 token 刷新, 避免 401 死循环. */
     private shouldRefreshToken(error: unknown, options: HttpRequestOptions, refreshedToken: boolean): boolean {
-        return !options.skipAuth
-            && !refreshedToken
-            && Boolean(this.bearerTokenRefreshHandler)
-            && error instanceof HttpError
-            && error.statusCode === 401;
+        return (
+            !options.skipAuth &&
+            !refreshedToken &&
+            Boolean(this.bearerTokenRefreshHandler) &&
+            error instanceof HttpError &&
+            error.statusCode === 401
+        );
     }
 
     /**

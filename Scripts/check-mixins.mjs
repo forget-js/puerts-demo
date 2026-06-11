@@ -2,11 +2,11 @@
  * Mixin 静态校验与生成产物一致性检查.
  *
  * 校验:
- * 1. 手写 TypeScript 禁止直接硬编码 UE.Class.Load('/Game/...') 和 UE.Game.Blueprints 类型路径
- * 2. 手写 TypeScript 禁止直接使用 console.log/warn/error (应使用 GF.Log/GF.Warn/GF.Error)
- * 3. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
- * 4. 重命名后的旧 Catalog 符号不得继续被引用
- * 5. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
+ * 1. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
+ * 2. 重命名后的旧 Catalog 符号不得继续被引用
+ * 3. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
+ *
+ * 蓝图硬编码路径与 console.* 规则由 ESLint 负责 (npm run lint).
  *
  * 用法: node check-mixins.mjs [--project=<项目根>] [--manifest=...] [--catalog=...] [--index=...]
  */
@@ -69,55 +69,6 @@ function isGeneratedFile(file, catalogFile) {
   const normalized = path.resolve(file).replace(/\\/g, '/');
   return normalized === path.resolve(catalogFile).replace(/\\/g, '/')
     || normalized.includes('/TypeScript/Mixins/_generated/');
-}
-
-/**
- * 禁止在手写代码中硬编码蓝图资产路径.
- * 应通过 BlueprintCatalog 符号 + BlueprintInstance 访问蓝图类型.
- */
-function checkNoHardcodedBlueprintReferences(projectRoot, catalogFile) {
-  const errors = [];
-  const typeScriptRoot = path.resolve(projectRoot, 'TypeScript');
-  for (const file of walkTypeScriptFiles(typeScriptRoot)) {
-    if (isGeneratedFile(file, catalogFile)) {
-      continue;
-    }
-
-    const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
-    const source = fs.readFileSync(file, 'utf8');
-    if (/UE\.Class\.Load\(\s*["']\/Game\//.test(source)) {
-      errors.push(`${relativeFile}: do not hardcode UE.Class.Load('/Game/...'); use BlueprintCatalog APIs.`);
-    }
-    if (/UE\.Game\.Blueprints\./.test(source)) {
-      errors.push(`${relativeFile}: do not reference UE.Game.Blueprints directly; use BlueprintInstance<typeof XxxBlueprint>.`);
-    }
-  }
-  return errors;
-}
-
-/**
- * 禁止在手写代码中直接使用 console.*.
- * GF 封装位于 Function.ts, 该文件自身及生成产物不在扫描范围内.
- */
-function checkNoBareConsole(projectRoot, catalogFile) {
-  const errors = [];
-  const typeScriptRoot = path.resolve(projectRoot, 'TypeScript');
-  const loggerFile = path.resolve(projectRoot, 'TypeScript/Global/Logger.ts').replace(/\\/g, '/');
-
-  for (const file of walkTypeScriptFiles(typeScriptRoot)) {
-    const normalized = path.resolve(file).replace(/\\/g, '/');
-    if (isGeneratedFile(file, catalogFile) || normalized === loggerFile) {
-      continue;
-    }
-
-    const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
-    const source = fs.readFileSync(file, 'utf8');
-    if (/console\.(log|warn|error)\s*\(/.test(source)) {
-      errors.push(`${relativeFile}: do not use console.log/warn/error directly; use GF.Log/GF.Warn/GF.Error.`);
-    }
-  }
-
-  return errors;
 }
 
 /**
@@ -186,8 +137,6 @@ const catalogFile = path.resolve(projectRoot, readArg('catalog', 'TypeScript/Blu
 const errors = [];
 const manifest = loadManifest(manifestFile);
 
-errors.push(...checkNoHardcodedBlueprintReferences(projectRoot, catalogFile));
-errors.push(...checkNoBareConsole(projectRoot, catalogFile));
 errors.push(...checkManifestEntries(projectRoot, manifest));
 errors.push(...checkPreviousSymbols(projectRoot, manifest, catalogFile));
 

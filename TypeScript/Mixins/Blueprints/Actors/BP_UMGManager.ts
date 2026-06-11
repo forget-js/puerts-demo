@@ -11,12 +11,7 @@ import {
     registerBlueprintMixin,
     type BlueprintInstance,
 } from '../../../Blueprints';
-import {
-    clearMixinRuntimeState,
-    getMixinRuntimeState,
-    type MixinRuntimeState,
-} from '../../../Runtime';
-
+import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from '../../../Runtime';
 
 // ===========================================================================
 //                                   配置常量
@@ -24,7 +19,6 @@ import {
 
 const GAME_TIME_UPDATE_INTERVAL_MS = 1000;
 const GAME_TIME_WIDGET_Z_ORDER = 0;
-
 
 // ===========================================================================
 //                                   运行时状态
@@ -40,14 +34,12 @@ interface BP_UMGManagerRuntimeState extends MixinRuntimeState {
     gameTimeWidget?: GameTimeWidget;
 }
 
-
 // ===========================================================================
 //                            Blueprint Mixin 绑定
 // ===========================================================================
 
-interface BP_UMGManagerMixin extends BlueprintInstance<typeof BP_UMGManagerBlueprint> { }
+interface BP_UMGManagerMixin extends BlueprintInstance<typeof BP_UMGManagerBlueprint> {}
 class BP_UMGManagerMixin implements BP_UMGManagerMixin {
-
     // ===========================================================================
     //                                  生命周期函数
     // ===========================================================================
@@ -71,7 +63,6 @@ class BP_UMGManagerMixin implements BP_UMGManagerMixin {
         clearMixinRuntimeState(this);
     }
 
-
     // ===========================================================================
     //                                  状态访问方法
     // ===========================================================================
@@ -80,7 +71,6 @@ class BP_UMGManagerMixin implements BP_UMGManagerMixin {
     private getRuntimeState(): BP_UMGManagerRuntimeState {
         return getMixinRuntimeState(this) as BP_UMGManagerRuntimeState;
     }
-
 
     // ===========================================================================
     //                                   私有方法
@@ -96,6 +86,5 @@ class BP_UMGManagerMixin implements BP_UMGManagerMixin {
         widget.SetGameSecond(UE.GameplayStatics.GetTimeSeconds(this));
     }
 }
-
 
 registerBlueprintMixin(BP_UMGManagerBlueprint, BP_UMGManagerMixin);

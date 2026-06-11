@@ -6,11 +6,7 @@
  */
 import * as UE from 'ue';
 import { blueprint } from 'puerts';
-import {
-    bindLogContext,
-    registerLogContext,
-    type RegisteredLogContext,
-} from '../Global/Logger';
+import { bindLogContext, registerLogContext, type RegisteredLogContext } from '../Global/Logger';
 import {
     type BlueprintClass,
     type BlueprintDescriptor,
@@ -35,7 +31,10 @@ function makeBlueprintLogContext(descriptor: BlueprintDescriptor): RegisteredLog
     };
 }
 
-function wrapMixinMethodsWithLogContext(mixinClass: BlueprintMixinConstructor<unknown>, context: RegisteredLogContext): void {
+function wrapMixinMethodsWithLogContext(
+    mixinClass: BlueprintMixinConstructor<unknown>,
+    context: RegisteredLogContext
+): void {
     const prototype = mixinClass.prototype as BlueprintMixinPrototype;
 
     for (const name of Object.getOwnPropertyNames(prototype)) {
@@ -67,9 +66,7 @@ function wrapMixinMethodsWithLogContext(mixinClass: BlueprintMixinConstructor<un
 }
 
 /** 按 Catalog 描述符加载 UE 蓝图生成类。 */
-export function loadBlueprintClass<TDescriptor extends BlueprintDescriptor>(
-    descriptor: TDescriptor
-): UE.Class {
+export function loadBlueprintClass<TDescriptor extends BlueprintDescriptor>(descriptor: TDescriptor): UE.Class {
     const uclass = UE.Class.Load(descriptor.path);
     if (!uclass) {
         throw new Error(`Failed to load Blueprint class: ${descriptor.path}`);

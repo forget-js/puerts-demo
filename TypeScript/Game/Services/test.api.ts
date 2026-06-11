@@ -15,9 +15,6 @@ const TestRoutes = {
     item: (id: string) => `/test/items/${encodeURIComponent(id)}`,
 } as const;
 
-
-
-
 /** GET /test/ping — 无入参 */
 export interface PingResponseDto {
     readonly ok: boolean;

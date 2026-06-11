@@ -22,9 +22,7 @@ export function normalizeHeaders(headers: HttpHeaders = {}): HttpHeaders {
 
 /** 相对 url 与 baseUrl 拼接; 绝对 url (http/https) 忽略 baseUrl. */
 export function buildUrl(baseUrl: string, url: string, query?: HttpQuery): string {
-    const fullUrl = /^https?:\/\//i.test(url)
-        ? url
-        : `${baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+    const fullUrl = /^https?:\/\//i.test(url) ? url : `${baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
 
     if (!query) {
         return fullUrl;
@@ -103,7 +101,7 @@ export function parseResponseBody<T>(response: HttpTransportResponse, responseTy
     }
 
     const contentType = findHeader(response.headers, 'content-type');
-    const looksLikeJson = /^[\s]*[\[{]/.test(response.body);
+    const looksLikeJson = /^[\s]*[[{]/.test(response.body);
     if (!contentType?.toLowerCase().includes(JSON_CONTENT_TYPE) && !looksLikeJson) {
         return response.body as unknown as T;
     }

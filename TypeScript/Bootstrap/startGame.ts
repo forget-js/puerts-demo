@@ -7,7 +7,13 @@
 
 import { Config } from '../Config/Config';
 import { GF } from '../Global';
-import { createRuntimeDiagnostics, installGlobalErrorHandlers, ModuleRegistry, runSafely, ScriptBuildInfo } from '../Runtime';
+import {
+    createRuntimeDiagnostics,
+    installGlobalErrorHandlers,
+    ModuleRegistry,
+    runSafely,
+    ScriptBuildInfo,
+} from '../Runtime';
 import { registerGameModules } from '../Game/register';
 
 declare const require: (moduleName: string) => unknown;

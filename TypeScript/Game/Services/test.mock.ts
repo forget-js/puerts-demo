@@ -6,12 +6,7 @@
 
 import { Config } from '../../Config/Config';
 import { MockHttpTransport, type HttpTransportResponse } from '../../Runtime';
-import {
-    buildTestMockUrl,
-    TestRoutes,
-    type SaveTestItemRequestDto,
-    type TestItemDto,
-} from './test.api';
+import { buildTestMockUrl, TestRoutes, type SaveTestItemRequestDto, type TestItemDto } from './test.api';
 
 function mockJsonResponse(body: unknown, statusCode = 200): HttpTransportResponse {
     return {

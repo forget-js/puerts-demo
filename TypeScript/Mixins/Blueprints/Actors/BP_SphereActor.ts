@@ -5,23 +5,16 @@
  * DONE  3. ReceiveEndPlay 清理运行时状态
  */
 import * as UE from 'ue';
-import {
-    BP_SphereActorBlueprint,
-    registerBlueprintMixin,
-    type BlueprintInstance,
-} from '../../../Blueprints';
+import { BP_SphereActorBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../../Blueprints';
 import { GF } from '../../../Global';
 import { clearMixinRuntimeState, getMixinRuntimeState } from '../../../Runtime';
-
-
 
 // ===========================================================================
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-interface BP_SphereActorMixin extends BlueprintInstance<typeof BP_SphereActorBlueprint> { }
+interface BP_SphereActorMixin extends BlueprintInstance<typeof BP_SphereActorBlueprint> {}
 class BP_SphereActorMixin implements BP_SphereActorMixin {
-
     // ===========================================================================
     //                                生命周期函数
     // ===========================================================================
@@ -41,14 +34,13 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         state.delegates.bind(this.bp_SphereTrigger.OnComponentEndOverlap, this, this.onSphereEndOverlap);
 
         // 调用蓝图中的函数
-        this.BP_Print("来自ts的文本");
+        this.BP_Print('来自ts的文本');
     }
 
     /** 必须清理定时器与委托, 避免 EndPlay 后仍触发回调. */
     ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
         clearMixinRuntimeState(this);
     }
-
 
     // ===========================================================================
     //                                  定时调用
@@ -61,8 +53,6 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
     private onPeriodicTick(): void {
         GF.Log(this, '每隔 5 秒定时调用');
     }
-
-
 
     // ===========================================================================
     //                                  碰撞绑定
@@ -92,7 +82,5 @@ class BP_SphereActorMixin implements BP_SphereActorMixin {
         }
     }
 }
-
-
 
 registerBlueprintMixin(BP_SphereActorBlueprint, BP_SphereActorMixin);

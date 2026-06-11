@@ -25,20 +25,14 @@ import type { ApiHttpDeps } from './api.deps';
 import { createTestApi } from './test.api';
 import { createTestUserApi } from './testUser.api';
 
-
-
 const LOGGER = GF.CreateLogger('ApiService');
 
-
-
 class ApiService implements ApiHttpDeps {
-
-    /** 
+    /**
      * 挂载业务领域 API, 每个 API 实例都依赖 ApiHttpDeps 契约.
      */
     readonly test = createTestApi(this);
     readonly testUser = createTestUserApi(this);
-
 
     private transport?: HttpTransport;
     private client?: HttpClient;

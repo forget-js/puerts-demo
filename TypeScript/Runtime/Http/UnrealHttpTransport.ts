@@ -113,7 +113,9 @@ export class UnrealHttpTransport implements HttpTransport {
         const bindings = UE as unknown as UnrealHttpBindings;
         const clientClass = bindings.PuertsHttpClient;
         if (!clientClass) {
-            throw new Error('PuertsHttpTransport plugin type UE.PuertsHttpClient is unavailable. Rebuild Unreal and regenerate Puerts d.ts.');
+            throw new Error(
+                'PuertsHttpTransport plugin type UE.PuertsHttpClient is unavailable. Rebuild Unreal and regenerate Puerts d.ts.'
+            );
         }
 
         this.client = bindings.NewObject(clientClass.StaticClass()) as UnrealPuertsHttpClient;
@@ -125,7 +127,7 @@ export class UnrealHttpTransport implements HttpTransport {
         const bindings = UE as unknown as UnrealHttpBindings;
         const options = bindings.PuertsHttpRequestOptions
             ? new bindings.PuertsHttpRequestOptions()
-            : {} as UnrealPuertsHttpRequestOptions;
+            : ({} as UnrealPuertsHttpRequestOptions);
 
         options.Url = request.url;
         options.Verb = request.method;

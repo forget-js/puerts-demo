@@ -8,11 +8,7 @@
  * Tick 说明: 该示例需要每帧驱动 Actor 位移；实例较多时应改为 Timer、Timeline 或蓝图表现层方案。
  */
 import * as UE from 'ue';
-import {
-    BP_ConeActorBlueprint,
-    registerBlueprintMixin,
-    type BlueprintInstance,
-} from '../../../Blueprints';
+import { BP_ConeActorBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../../Blueprints';
 import { GF, GE } from '../../../Global';
 import { Api } from '../../../Game/Services';
 import {
@@ -23,16 +19,12 @@ import {
     type MixinRuntimeState,
 } from '../../../Runtime';
 
-
-
 // ===========================================================================
 //                                   配置常量
 // ===========================================================================
 
 /** 绕圆心旋转的角速度 (弧度/秒). */
 const ORBIT_ANGULAR_SPEED = Math.PI / 2;
-
-
 
 // ===========================================================================
 //                                   运行时状态
@@ -48,15 +40,12 @@ interface BP_ConeActorRuntimeState extends MixinRuntimeState {
     isMovementPaused?: boolean;
 }
 
-
-
 // ===========================================================================
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-interface BP_ConeActorMixin extends BlueprintInstance<typeof BP_ConeActorBlueprint> { }
+interface BP_ConeActorMixin extends BlueprintInstance<typeof BP_ConeActorBlueprint> {}
 class BP_ConeActorMixin implements BP_ConeActorMixin {
-
     // ===========================================================================
     //                                生命周期函数
     // ===========================================================================
@@ -83,8 +72,6 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
         clearMixinRuntimeState(this);
     }
 
-
-
     // ===========================================================================
     //                                状态访问方法
     // ===========================================================================
@@ -109,8 +96,6 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
     private getRuntimeState(): BP_ConeActorRuntimeState {
         return getMixinRuntimeState(this) as BP_ConeActorRuntimeState;
     }
-
-
 
     // ===========================================================================
     //                                  私有方法
@@ -145,8 +130,6 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
         GF.SetActorLocation(this, newLocation);
     }
 
-
-
     // ===========================================================================
     //                                  测试域 HTTP 演示
     // ===========================================================================
@@ -179,14 +162,13 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
             await Api.testUser.deleteUser(demoUser.username, options);
             GF.LogPrettyJson(this, 'testUser.deleteUser', { username: demoUser.username });
         } catch (error) {
-            const message = error instanceof HttpError
-                ? `${error.kind}: ${error.message}${error.url ? ` (${error.method ?? '?'} ${error.url})` : ''}`
-                : String(error);
+            const message =
+                error instanceof HttpError
+                    ? `${error.kind}: ${error.message}${error.url ? ` (${error.method ?? '?'} ${error.url})` : ''}`
+                    : String(error);
             GF.LogPrettyJson(this, 'testUser HTTP demo failed', { message }, { level: GE.LogLevel.Warning });
         }
     }
 }
-
-
 
 registerBlueprintMixin(BP_ConeActorBlueprint, BP_ConeActorMixin);

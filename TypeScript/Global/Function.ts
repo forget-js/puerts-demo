@@ -102,5 +102,3 @@ export const GF: GlobalFunction = {
         return createLogger(displayName);
     },
 };
-
-

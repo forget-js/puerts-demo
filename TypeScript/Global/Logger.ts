@@ -198,11 +198,14 @@ function resolveLogContext(options: LogOptions): RegisteredLogContext {
 }
 
 /** 组装最终输出文本：`[Level] [displayName] message [context] [error]` */
-function formatLogMessage(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): string {
+function formatLogMessage(
+    message: string,
+    level: LogLevel,
+    context: RegisteredLogContext,
+    options: LogOptions
+): string {
     const label = LEVEL_LABEL[level] ?? 'Log';
-    const prefix = context.displayName
-        ? `[${label}] [${context.displayName}]`
-        : `[${label}]`;
+    const prefix = context.displayName ? `[${label}] [${context.displayName}]` : `[${label}]`;
     const details = [
         options.context !== undefined ? safeStringify(options.context) : undefined,
         options.error !== undefined ? safeStringify(options.error) : undefined,
@@ -215,10 +218,10 @@ function formatLogMessage(message: string, level: LogLevel, context: RegisteredL
 function resolveLogTargets(level: LogLevel, options: LogOptions): { toScreen: boolean; toLog: boolean } {
     const hasWorldContext = options.worldContext !== undefined && options.worldContext !== null;
     const defaultToScreen =
-        hasWorldContext
-        && Config.app.environment !== 'Shipping'
-        && Config.log.showScreenLogs
-        && level >= Config.log.screenMinLevel;
+        hasWorldContext &&
+        Config.app.environment !== 'Shipping' &&
+        Config.log.showScreenLogs &&
+        level >= Config.log.screenMinLevel;
 
     // Mixin 常见调用 GF.Log(this, '...')：默认同时打到屏幕和日志。
     // 无 worldContext 时，默认仅输出控制台，避免无效 PrintString 调用。
@@ -230,18 +233,19 @@ function resolveLogTargets(level: LogLevel, options: LogOptions): { toScreen: bo
 
 /** 生成 once / rateLimit 去重用的复合 key：module|level|keyOrMessage */
 function makeLogKey(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): string {
-    return [
-        context.module ?? context.displayName,
-        LEVEL_LABEL[level] ?? 'Log',
-        options.key ?? message,
-    ].join('|');
+    return [context.module ?? context.displayName, LEVEL_LABEL[level] ?? 'Log', options.key ?? message].join('|');
 }
 
 /**
  * 根据 once / rateLimit 判断是否应跳过本次输出.
  * 仅设置 key 也会进入限流路径，间隔取 Config.log.rateLimitDefaults.
  */
-function shouldSuppressByFrequency(message: string, level: LogLevel, context: RegisteredLogContext, options: LogOptions): boolean {
+function shouldSuppressByFrequency(
+    message: string,
+    level: LogLevel,
+    context: RegisteredLogContext,
+    options: LogOptions
+): boolean {
     if (!options.once && !options.key && options.rateLimitSeconds === undefined) {
         return false;
     }
@@ -292,7 +296,14 @@ export function emitLog(message: string, options: LogOptions = {}): void {
     if (toScreen) {
         const color = options.color ?? SCREEN_COLOR_BY_LEVEL[level];
         // PrintString: bPrintToScreen=true, bPrintToLog=false（控制台已由上方 toLog 分支负责）
-        UE.KismetSystemLibrary.PrintString(options.worldContext ?? null, formatted, true, false, color, options.duration ?? 2);
+        UE.KismetSystemLibrary.PrintString(
+            options.worldContext ?? null,
+            formatted,
+            true,
+            false,
+            color,
+            options.duration ?? 2
+        );
     }
 }
 
@@ -308,8 +319,7 @@ function normalizeLogArgs(
 ): { message: string; options: LogOptions } {
     // Log(message) / Log(message, options)
     if (typeof arg0 === 'string') {
-        const options =
-            typeof arg1 === 'object' && arg1 !== null ? (arg1 as LogOptions) : {};
+        const options = typeof arg1 === 'object' && arg1 !== null ? (arg1 as LogOptions) : {};
 
         return { message: arg0, options };
     }
@@ -360,8 +370,7 @@ export function logPrettyJsonWithArgs(
     if (typeof arg0 === 'string') {
         const label = arg0;
         const value = arg1;
-        const options =
-            typeof arg2 === 'object' && arg2 !== null ? (arg2 as LogOptions) : {};
+        const options = typeof arg2 === 'object' && arg2 !== null ? (arg2 as LogOptions) : {};
         logPrettyJsonLines(label, value, options);
         return;
     }

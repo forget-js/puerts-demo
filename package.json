@@ -6,13 +6,17 @@
   "scripts": {
     "postinstall": "node Scripts/ensure-config-dev.mjs",
     "build": "npm run gen:config-dev && npm run gen:build-info && npm run gen:blueprint-catalog && npm run gen:mixin-index && tsc",
-    "check": "npm run gen:config-dev && npm run gen:blueprint-catalog && npm run gen:mixin-index && npm run check:mixin && tsc --noEmit",
+    "check": "npm run gen:config-dev && npm run gen:blueprint-catalog && npm run gen:mixin-index && npm run check:mixin && npm run lint && npm run format:check && tsc --noEmit",
     "check:mixin": "node Scripts/check-mixins.mjs",
     "gen:blueprint-catalog": "node Plugins/PuertsMixinAutomation/Scripts/generate-blueprint-catalog.mjs",
     "gen:build-info": "node Scripts/write-build-info.mjs",
     "gen:config-dev": "node Scripts/ensure-config-dev.mjs",
     "gen:mixin-index": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-index.mjs",
     "gen:mixin-template": "node Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs",
+    "format": "prettier --write \"TypeScript/**/*.ts\"",
+    "format:check": "prettier --check \"TypeScript/**/*.ts\"",
+    "lint": "eslint TypeScript",
+    "lint:fix": "eslint TypeScript --fix",
     "start": "npm run gen:config-dev && npm run gen:blueprint-catalog && npm run gen:mixin-index && tsc --watch"
   },
   "keywords": [],
@@ -20,6 +24,11 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4"
   }
 }

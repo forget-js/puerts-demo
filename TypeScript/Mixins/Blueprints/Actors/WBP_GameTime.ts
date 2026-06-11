@@ -12,12 +12,7 @@ import {
     type BlueprintInstance,
 } from '../../../Blueprints';
 import { GF } from '../../../Global';
-import {
-    clearMixinRuntimeState,
-    getMixinRuntimeState,
-    type MixinRuntimeState,
-} from '../../../Runtime';
-
+import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from '../../../Runtime';
 
 // ===========================================================================
 //                                   配置常量
@@ -25,7 +20,6 @@ import {
 
 const GAME_TIME_TEXT_PREFIX = '游戏时间';
 const BP_CONE_ACTOR_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
-
 
 // ===========================================================================
 //                                   运行时状态
@@ -39,14 +33,12 @@ interface WBP_TestRuntimeState extends MixinRuntimeState {
     isToggleButtonBound?: boolean;
 }
 
-
 // ===========================================================================
 //                            Blueprint Mixin 绑定
 // ===========================================================================
 
-interface WBP_GameTimeMixin extends BlueprintInstance<typeof WBP_GameTimeBlueprint> { }
+interface WBP_GameTimeMixin extends BlueprintInstance<typeof WBP_GameTimeBlueprint> {}
 class WBP_GameTimeMixin implements WBP_GameTimeMixin {
-
     // ===========================================================================
     //                                生命周期函数
     // ===========================================================================
@@ -59,7 +51,6 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
         clearMixinRuntimeState(this);
     }
 
-
     // ===========================================================================
     //                                  对外方法
     // ===========================================================================
@@ -68,7 +59,6 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
         this.bp_GameSecond.SetText(`${GAME_TIME_TEXT_PREFIX}: ${Math.floor(GameSecond)} 秒`);
     }
 
-
     // ===========================================================================
     //                                状态访问方法
     // ===========================================================================
@@ -76,7 +66,6 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
     private getRuntimeState(): WBP_TestRuntimeState {
         return getMixinRuntimeState(this) as WBP_TestRuntimeState;
     }
-
 
     // ===========================================================================
     //                                  私有方法
@@ -98,7 +87,9 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
     }
 
     private onToggleButtonClicked(): void {
-        const coneActor = UE.GameplayStatics.GetActorOfClass(this, BP_CONE_ACTOR_CLASS) as MovementControlActor | undefined;
+        const coneActor = UE.GameplayStatics.GetActorOfClass(this, BP_CONE_ACTOR_CLASS) as
+            | MovementControlActor
+            | undefined;
 
         if (!coneActor || typeof coneActor.ToggleMovementPaused !== 'function') {
             GF.Warn(this, 'BP_ConeActor missing or not initialized');
@@ -108,6 +99,5 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
         coneActor.ToggleMovementPaused();
     }
 }
-
 
 registerBlueprintMixin(WBP_GameTimeBlueprint, WBP_GameTimeMixin);

@@ -5,24 +5,17 @@
  */
 import * as UE from 'ue';
 import { $ref } from 'puerts';
-import {
-    BP_CubeBlueprint,
-    registerBlueprintMixin,
-    type BlueprintInstance,
-} from '../../Blueprints';
+import { BP_CubeBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../Blueprints';
 import { GF } from '../../Global';
 import { Api, setupTestMockTransport } from '../../Game/Services';
 import { HttpError, UnrealHttpTransport } from '../../Runtime';
-
-
 
 // ===========================================================================
 //                           Blueprint Mixin 绑定
 // ===========================================================================
 
-interface BP_CubeMixin extends BlueprintInstance<typeof BP_CubeBlueprint> { }
+interface BP_CubeMixin extends BlueprintInstance<typeof BP_CubeBlueprint> {}
 class BP_CubeMixin implements BP_CubeMixin {
-
     // ===========================================================================
     //                                生命周期函数
     // ===========================================================================
@@ -38,8 +31,6 @@ class BP_CubeMixin implements BP_CubeMixin {
         this.K2_AddActorLocalRotation(new UE.Rotator(0, 0, DeltaSeconds * 10), false, $ref<UE.HitResult>(), false);
     }
 
-
-
     private async runTestHttpDemo(): Promise<void> {
         const options = { owner: this };
         try {
@@ -49,24 +40,17 @@ class BP_CubeMixin implements BP_CubeMixin {
             GF.Log(this, 'test.echoQuery', { context: { ...echo }, toScreen: false });
             const created = await Api.test.createItem({ name: 'MockSword', quantity: 1 }, options);
             GF.Log(this, 'test.createItem', { context: { ...created }, toScreen: false });
-            const updated = await Api.test.updateItem(
-                created.id,
-                { name: 'MockSword+', quantity: 2 },
-                options
-            );
+            const updated = await Api.test.updateItem(created.id, { name: 'MockSword+', quantity: 2 }, options);
             GF.Log(this, 'test.updateItem', { context: { ...updated }, toScreen: false });
             const deleted = await Api.test.deleteItem(created.id, options);
             GF.Log(this, 'test.deleteItem', { context: { ...deleted }, toScreen: false });
         } catch (error) {
-            const message = error instanceof HttpError
-                ? `${error.kind}: ${error.message}`
-                : String(error);
+            const message = error instanceof HttpError ? `${error.kind}: ${error.message}` : String(error);
             GF.Warn(this, 'test HTTP demo failed', { context: { message }, toScreen: false });
         } finally {
             Api.setTransport(new UnrealHttpTransport());
         }
     }
-
 }
 
 registerBlueprintMixin(BP_CubeBlueprint, BP_CubeMixin);

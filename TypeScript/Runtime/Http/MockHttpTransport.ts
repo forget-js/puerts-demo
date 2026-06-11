@@ -5,7 +5,13 @@
  * setTimeout(0) 模拟异步 Transport, 便于与真实回调时序对齐.
  */
 
-import type { HttpHeaders, HttpTransport, HttpTransportRequest, HttpTransportResponse, HttpTransportTask } from './types';
+import type {
+    HttpHeaders,
+    HttpTransport,
+    HttpTransportRequest,
+    HttpTransportResponse,
+    HttpTransportTask,
+} from './types';
 
 export type MockHttpHandler = (request: HttpTransportRequest) => HttpTransportResponse | Promise<HttpTransportResponse>;
 
