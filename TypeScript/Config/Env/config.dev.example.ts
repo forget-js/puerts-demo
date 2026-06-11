@@ -2,8 +2,10 @@ import { LogLevel } from '../../Global/Enums';
 import type { AppConfig } from './config.default';
 
 /**
- * 复制本文件为 config.dev.ts 后修改（config.dev.ts 已 gitignore，勿提交）。
- * 全局调高阈值可减少刷屏；对单个 module 单独放宽便于调试当前 Mixin。
+ * 本地开发配置模板（入库）.
+ *
+ * config.dev.ts 由 npm install / npm run gen:config-dev 从本文件自动生成（已 gitignore，勿提交）.
+ * 直接修改 config.dev.ts 即可；不会被脚本覆盖.
  */
 export const configDev: Partial<AppConfig> = {
     app: {

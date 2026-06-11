@@ -1,7 +1,7 @@
 /**
  * 默认运行时配置 (入库).
  *
- * 本地调试覆盖请复制 config.dev.example.ts 为 config.dev.ts, 勿直接改本文件.
+ * 本地调试覆盖写入 config.dev.ts (npm install 时从 config.dev.example.ts 自动生成), 勿直接改本文件.
  */
 
 import { LogLevel } from '../../Global/Enums';
