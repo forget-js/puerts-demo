@@ -33,7 +33,34 @@ npm start                 # 生成 Catalog / 索引后 tsc --watch，输出到 C
 npm run build             # 写入脚本版本信息，生成 Catalog / 索引并编译到 Content/JavaScript
 ```
 
-运行时入口仍为 Puerts 侧加载的 **`Main`** 模块（由 `Main.ts` 编译为 `Content/JavaScript/Main.js`，具体在项目 C++ GameInstance 中配置）。`Main.ts` 会调用 `Bootstrap/startGame.ts`，由 Bootstrap 统一安装错误边界、加载 Mixin、注册并启动业务模块。
+运行时入口仍为 Puerts 侧加载的 **`Main`** 模块（由 `TypeScript/Main.ts` 编译为 `Content/JavaScript/Main.js`）。**C++ 宿主**由独立插件 **`Plugins/PuertsScriptHost`** 负责创建 `FJsEnv`、按配置启用调试端口，并在退出时触发 TS `stop/dispose`。`Main.ts` 会调用 `Bootstrap/startGame.ts`，由 Bootstrap 统一安装错误边界、加载 Mixin、注册并启动业务模块。
+
+---
+
+## PuertsScriptHost 插件
+
+本仓库附带独立 Runtime 插件：**`Plugins/PuertsScriptHost`**（可迁移的 Puerts JsEnv 宿主）。
+
+迁移到其他项目时请：
+
+1. 复制整个 `Plugins/PuertsScriptHost` 目录  
+2. 在目标 `.uproject` 中 **启用 `PuertsScriptHost`**（目标工程须已启用 **Puerts**）  
+3. 合并或复制 [`Config/DefaultPuerts.ini`](Config/DefaultPuerts.ini)（`DebugEnable` / `DebugPort` 等官方 Puerts 配置）  
+4. 选择 GameInstance 接入方式（二选一）：
+   - **有自定义 GameInstance**：在 `OnStart` 中调用 `GetSubsystem<UPuertsScriptHostSubsystem>()->StartScripts()`（本仓库 `MyGameInstance` 即此方式）  
+   - **零自定义 C++**：`DefaultEngine.ini` 设置 `GameInstanceClass=/Script/PuertsScriptHost.GameScriptHostGameInstance`  
+5. 确保 TS 在 `startGame` 末尾通过 `puerts.argv.getByName('ScriptLifecycle')` 绑定 shutdown（本仓库已实现）
+
+### 插件职责
+
+| 组件 | 说明 |
+| --- | --- |
+| `UPuertsScriptHostSubsystem` | 唯一 `FJsEnv` 持有者；`StartScripts` / `StopScripts`；`Deinitialize` 时触发 TS shutdown |
+| `UPuertsScriptLifecycle` | `BindShutdown` / `InvokeShutdown`，桥接 C++ 与 TS 关闭回调 |
+| `UGameScriptHostGameInstance` | 可选基类，免写项目 GameInstance |
+| `UPuertsScriptHostSettings` | 入口模块名（默认 `Main`）、argv 注入开关；**Edit → Project Settings → Plugins → Puerts Script Host** |
+
+调试端口读取官方 **`UPuertsSetting`**（`Config/DefaultPuerts.ini`）：`DebugEnable=false` 时不监听 Inspector；**Shipping 构建强制禁用**，忽略 ini。
 
 ---
 

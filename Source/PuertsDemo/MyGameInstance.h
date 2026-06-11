@@ -2,27 +2,21 @@
 
 #pragma once
 
-#include "JsEnv.h"
-
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "MyGameInstance.generated.h"
 
 /**
- * 
+ * 项目 GameInstance: 仅转发脚本启动到 PuertsScriptHost 插件 Subsystem.
+ * JsEnv 生命周期由 UPuertsScriptHostSubsystem 统一管理.
  */
 UCLASS()
 class PUERTSDEMO_API UMyGameInstance : public UGameInstance
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
+
 public:
-
-	virtual void Init() override;
-
-	virtual void OnStart() override;
-
-	virtual void Shutdown() override;
-	
-private:
-	TSharedPtr<puerts::FJsEnv> GameScript;
+    virtual void Init() override;
+    virtual void OnStart() override;
+    virtual void Shutdown() override;
 };

@@ -31,6 +31,10 @@
 		{
 			"Name": "PuertsHttpTransport",
 			"Enabled": true
+		},
+		{
+			"Name": "PuertsScriptHost",
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [

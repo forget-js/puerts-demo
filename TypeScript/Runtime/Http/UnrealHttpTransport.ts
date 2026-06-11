@@ -1,57 +1,35 @@
 /**
  * PuertsHttpTransport 插件的 TypeScript 适配层.
  *
- * 将 {@link HttpTransportRequest} 映射为 UE.UPuertsHttpClient.Send 调用,
- * 回调中把 FPuertsHttpResponse 转回统一的 {@link HttpTransportResponse}.
- * 需在 Unreal 编译插件并重新生成 Puerts d.ts 后 UE.PuertsHttpClient 才可用.
+ * 将 {@link HttpTransportRequest} 映射为 UE.PuertsHttpClient.Send 调用,
+ * 回调中把 UE.PuertsHttpResponse 转回统一的 {@link HttpTransportResponse}.
  */
 
+import { releaseManualReleaseDelegate, toManualReleaseDelegate } from 'puerts';
 import * as UE from 'ue';
 
 import { parseHeadersJson } from './Json';
 import type { HttpTransport, HttpTransportRequest, HttpTransportResponse, HttpTransportTask } from './types';
 
-interface UnrealPuertsHttpRequestOptions {
-    Url: string;
-    Verb: string;
-    HeadersJson: string;
-    Body: string;
-    TimeoutSeconds: number;
-}
-
-interface UnrealPuertsHttpResponse {
-    RequestId: number;
-    StatusCode: number;
-    bSucceeded: boolean;
-    bCanceled: boolean;
-    ErrorMessage: string;
-    HeadersJson: string;
-    Body: string;
-}
-
-interface UnrealPuertsHttpClient {
-    Send(options: UnrealPuertsHttpRequestOptions, callback: (response: UnrealPuertsHttpResponse) => void): number;
-    Cancel(requestId: number): boolean;
-    CancelAll(): void;
-}
-
-interface UnrealHttpBindings {
-    NewObject(cls: UE.Class): unknown;
-    PuertsHttpClient?: {
-        StaticClass(): UE.Class;
-    };
-    PuertsHttpRequestOptions?: new () => UnrealPuertsHttpRequestOptions;
-}
-
 /** 对接 Plugins/PuertsHttpTransport 的 {@link HttpTransport} 实现. */
 export class UnrealHttpTransport implements HttpTransport {
-    private client?: UnrealPuertsHttpClient;
+    private client?: UE.PuertsHttpClient;
 
     send(request: HttpTransportRequest): HttpTransportTask {
         let requestId = 0;
         // 防止 Send 同步失败与异步回调/ cancel 竞态重复 settle.
         let settled = false;
         let rejectTask: (error: unknown) => void = () => undefined;
+        let responseHandler: ((response: UE.PuertsHttpResponse) => void) | undefined;
+
+        const releaseResponseHandler = (): void => {
+            if (!responseHandler) {
+                return;
+            }
+
+            releaseManualReleaseDelegate(responseHandler);
+            responseHandler = undefined;
+        };
 
         const promise = new Promise<HttpTransportResponse>((resolve, reject) => {
             rejectTask = reject;
@@ -59,8 +37,14 @@ export class UnrealHttpTransport implements HttpTransport {
             try {
                 const client = this.getClient();
                 const options = this.createRequestOptions(request);
-                requestId = client.Send(options, (response) => {
+
+                const onResponse = (response: UE.PuertsHttpResponse): void => {
+                    if (settled) {
+                        return;
+                    }
+
                     settled = true;
+                    releaseResponseHandler();
                     resolve({
                         requestId: response.RequestId,
                         statusCode: response.StatusCode,
@@ -70,13 +54,19 @@ export class UnrealHttpTransport implements HttpTransport {
                         headers: parseHeadersJson(response.HeadersJson),
                         body: response.Body || '',
                     });
-                });
+                };
+
+                responseHandler = onResponse;
+                requestId = client.Send(options, toManualReleaseDelegate(onResponse));
 
                 if (requestId <= 0 && !settled) {
+                    settled = true;
+                    releaseResponseHandler();
                     reject(new Error('PuertsHttpTransport failed to start request.'));
                 }
             } catch (error) {
                 settled = true;
+                releaseResponseHandler();
                 reject(error);
             }
         });
@@ -92,6 +82,7 @@ export class UnrealHttpTransport implements HttpTransport {
                 }
 
                 settled = true;
+                releaseResponseHandler();
                 if (requestId > 0) {
                     this.client?.Cancel(requestId);
                 }
@@ -105,29 +96,18 @@ export class UnrealHttpTransport implements HttpTransport {
     }
 
     /** 懒创建 UPuertsHttpClient 实例; 同一 Transport 复用以共享 Pending 请求表. */
-    private getClient(): UnrealPuertsHttpClient {
+    private getClient(): UE.PuertsHttpClient {
         if (this.client) {
             return this.client;
         }
 
-        const bindings = UE as unknown as UnrealHttpBindings;
-        const clientClass = bindings.PuertsHttpClient;
-        if (!clientClass) {
-            throw new Error(
-                'PuertsHttpTransport plugin type UE.PuertsHttpClient is unavailable. Rebuild Unreal and regenerate Puerts d.ts.'
-            );
-        }
-
-        this.client = bindings.NewObject(clientClass.StaticClass()) as UnrealPuertsHttpClient;
+        this.client = new UE.PuertsHttpClient();
         return this.client;
     }
 
-    /** Headers 以 JSON 字符串传入 C++ 层, 与 FPuertsHttpRequestOptions 反射字段一致. */
-    private createRequestOptions(request: HttpTransportRequest): UnrealPuertsHttpRequestOptions {
-        const bindings = UE as unknown as UnrealHttpBindings;
-        const options = bindings.PuertsHttpRequestOptions
-            ? new bindings.PuertsHttpRequestOptions()
-            : ({} as UnrealPuertsHttpRequestOptions);
+    /** Headers 以 JSON 字符串传入 C++ 层, 与 UE.PuertsHttpRequestOptions 反射字段一致. */
+    private createRequestOptions(request: HttpTransportRequest): UE.PuertsHttpRequestOptions {
+        const options = new UE.PuertsHttpRequestOptions();
 
         options.Url = request.url;
         options.Verb = request.method;

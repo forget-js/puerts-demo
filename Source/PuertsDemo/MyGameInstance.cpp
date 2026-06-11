@@ -1,26 +1,26 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "MyGameInstance.h"
+
+#include "PuertsScriptHostSubsystem.h"
 
 void UMyGameInstance::Init()
 {
-	Super::Init();
+    Super::Init();
 }
 
 void UMyGameInstance::OnStart()
 {
-	Super::OnStart();
-	//GameScript = MakeShared<puerts::FJsEnv>();
-	GameScript = MakeShared<puerts::FJsEnv>(std::make_unique<puerts::DefaultJSModuleLoader>(TEXT("JavaScript")), std::make_shared<puerts::FDefaultLogger>(), 8080);
-	//GameScript->WaitDebugger();
-	TArray<TPair<FString, UObject*>> Arguments;
-	Arguments.Add(TPair<FString, UObject*>(TEXT("GameInstance"), this));
-	GameScript->Start("Main", Arguments);
+    Super::OnStart();
+
+    if (UPuertsScriptHostSubsystem* ScriptHost = GetSubsystem<UPuertsScriptHostSubsystem>())
+    {
+        ScriptHost->StartScripts();
+    }
 }
 
 void UMyGameInstance::Shutdown()
 {
-	Super::Shutdown();
-	GameScript.Reset();
+    // 脚本 stop/dispose 由 UPuertsScriptHostSubsystem::Deinitialize 触发, 此处无需 Reset JsEnv.
+    Super::Shutdown();
 }
