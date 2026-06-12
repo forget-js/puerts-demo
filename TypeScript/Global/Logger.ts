@@ -34,6 +34,8 @@ const registeredLogContexts = new WeakMap<object, RegisteredLogContext>();
 const onceLogKeys = new Set<string>();
 /** 限流去重：key → 上次输出时间戳 (ms)，进程生命周期内不重置 */
 const rateLimitedLogTimes = new Map<string, number>();
+/** rateLimitedLogTimes 最大条目数, 防止长跑进程内存缓增 */
+const RATE_LIMIT_MAP_MAX = 512;
 
 /** 通过 registerLogContext / bindLogContext 绑定的日志上下文 */
 export interface RegisteredLogContext {
@@ -271,10 +273,23 @@ function shouldSuppressByFrequency(
     }
 
     rateLimitedLogTimes.set(key, now);
+    trimRateLimitedLogTimes();
     if (options.once) {
         onceLogKeys.add(key);
     }
     return false;
+}
+
+/** 超出容量时按 FIFO 淘汰最旧条目 */
+function trimRateLimitedLogTimes(): void {
+    while (rateLimitedLogTimes.size > RATE_LIMIT_MAP_MAX) {
+        const oldestKey = rateLimitedLogTimes.keys().next().value;
+        if (oldestKey === undefined) {
+            break;
+        }
+
+        rateLimitedLogTimes.delete(oldestKey);
+    }
 }
 
 /** 日志核心出口：过滤 → 格式化 → 控制台 / UE 屏幕双通道输出 */

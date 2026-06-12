@@ -50,6 +50,7 @@ export class HttpClient {
     private readonly retry: HttpRetryOptions;
     private bearerTokenProvider?: BearerTokenProvider;
     private bearerTokenRefreshHandler?: BearerTokenRefreshHandler;
+    private refreshInFlight?: Promise<boolean>;
 
     constructor(options: HttpClientOptions) {
         this.transport = options.transport;
@@ -180,9 +181,13 @@ export class HttpClient {
             } catch (error) {
                 lastError = this.normalizeError(error, getActiveTask()?.requestId, method, url);
 
+                if (isCanceled()) {
+                    throw HttpError.canceled();
+                }
+
                 if (this.shouldRefreshToken(lastError, options, refreshedToken)) {
                     refreshedToken = true;
-                    if (await this.bearerTokenRefreshHandler?.()) {
+                    if (await this.tryRefreshToken()) {
                         --attempt;
                         continue;
                     }
@@ -316,6 +321,22 @@ export class HttpClient {
             ...retry,
             attempts: Math.max(1, retry?.attempts ?? this.retry.attempts),
         };
+    }
+
+    /** 并发 401 共享同一次 refresh, 避免多次刷新 token. */
+    private tryRefreshToken(): Promise<boolean> {
+        if (this.refreshInFlight) {
+            return this.refreshInFlight;
+        }
+
+        if (!this.bearerTokenRefreshHandler) {
+            return Promise.resolve(false);
+        }
+
+        this.refreshInFlight = Promise.resolve(this.bearerTokenRefreshHandler()).finally(() => {
+            this.refreshInFlight = undefined;
+        });
+        return this.refreshInFlight;
     }
 
     /** 每个请求最多尝试一次 token 刷新, 避免 401 死循环. */

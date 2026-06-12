@@ -21,6 +21,8 @@ type BlueprintMixinConstructor<TInstance> = new (...args: any[]) => TInstance;
 type BlueprintMixinPrototype = Record<string, unknown>;
 
 const LOG_CONTEXT_WRAPPED = Symbol('LogContextWrapped');
+const blueprintClassCache = new Map<string, UE.Class>();
+const blueprintJsClassCache = new Map<string, unknown>();
 
 function makeBlueprintLogContext(descriptor: BlueprintDescriptor): RegisteredLogContext {
     const displayName = descriptor.symbol.replace(/Blueprint$/, '');
@@ -65,23 +67,36 @@ function wrapMixinMethodsWithLogContext(
     }
 }
 
-/** 按 Catalog 描述符加载 UE 蓝图生成类。 */
+/** 按 Catalog 描述符加载 UE 蓝图生成类 (带路径级缓存). */
 export function loadBlueprintClass<TDescriptor extends BlueprintDescriptor>(descriptor: TDescriptor): UE.Class {
+    const cached = blueprintClassCache.get(descriptor.path);
+    if (cached) {
+        return cached;
+    }
+
     const uclass = UE.Class.Load(descriptor.path);
     if (!uclass) {
         throw new Error(`Failed to load Blueprint class: ${descriptor.path}`);
     }
 
+    blueprintClassCache.set(descriptor.path, uclass);
     return uclass;
 }
 
-/** 转换为 Puerts 可用于 `blueprint.mixin` 的 JS class。 */
+/** 转换为 Puerts 可用于 `blueprint.mixin` 的 JS class (带路径级缓存). */
 export function toBlueprintJsClass<TDescriptor extends BlueprintDescriptor>(
     descriptor: TDescriptor
 ): BlueprintClass<TDescriptor> {
-    return blueprint.tojs<BlueprintClass<TDescriptor>>(
+    const cached = blueprintJsClassCache.get(descriptor.path);
+    if (cached) {
+        return cached as BlueprintClass<TDescriptor>;
+    }
+
+    const jsClass = blueprint.tojs<BlueprintClass<TDescriptor>>(
         loadBlueprintClass(descriptor)
     ) as unknown as BlueprintClass<TDescriptor>;
+    blueprintJsClassCache.set(descriptor.path, jsClass);
+    return jsClass;
 }
 
 /** 将 TS mixin class 绑定到指定蓝图生成类。 */
