@@ -6,7 +6,7 @@
 2. Mixin 文件名、Mixin 类名、Catalog 符号与蓝图当前名称一对一，例如 `BP_Foo.ts` / `BP_FooMixin` / `BP_FooBlueprint`。
 3. 手写代码不直接写 `/Game/...`、`UE.Class.Load()` 或蓝图生成类型命名空间；蓝图加载和类型引用统一走 `TypeScript/Blueprints`。
 4. Mixin 使用 `registerBlueprintMixin(XxxBlueprint, XxxMixin)`，类型使用 `BlueprintInstance<typeof XxxBlueprint>`。
-5. `blueprint-manifest.json`、`BlueprintCatalog.ts`、`mixin-imports.ts` 与当前 Mixin 文件同步；新增、移动或重命名后运行 `npm run check`。
+5. `blueprint-manifest.json`、`BlueprintCatalog.ts`、`mixin-imports.{shared,client,server}.ts` 与当前 Mixin 文件同步；每条 manifest 条目含合法 `executionContext`；新增、移动或重命名后运行 `npm run check`。
 6. 不依赖 TS class 字段初始化或 `constructor`；实例运行时状态使用 `getMixinRuntimeState(this)`。
 7. 状态归属清晰：策划配置放蓝图 `bp_` 变量，TS 临时状态放 `MixinRuntimeState`，模块常量/类型声明才放模块顶层。
 8. 没有在模块顶层用 `WeakMap` / `Map` / 游离变量保存实例运行时状态。
@@ -24,3 +24,6 @@
 20. TS 触发表现只调用蓝图 `BP_` 函数，蓝图进入 TS 统一使用 `TS_` 入口。
 21. 不直接调用动画、粒子、音效、UMG 动效等表现 API；表现细节留在蓝图。
 22. 日志使用 `GF.Log` / `GF.Warn` / `GF.Error`，Mixin 模块名前缀自动推导，避免裸 `console.*`。
+23. **禁止**在 Mixin 中使用 `GameplayStatics.GetActorOfClass` / `GetAllActorsOfClass` 做跨模块控制；改走 `EventBus` 或 `Game/Features` 注册表。
+24. **禁止**在 Mixin 中调用 `Api.setTransport` / `setupTestMockTransport`；开发态 HTTP 由 `DevHttpModule` 统一管理。
+25. 新建 Widget / UMG Manager 类 Mixin，Manifest `executionContext` 必须为 `Client`。

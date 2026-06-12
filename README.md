@@ -103,7 +103,7 @@ Mixin 模板内容由 **`Plugins/PuertsMixinAutomation/Scripts/generate-mixin-te
 1. 新建 Blueprint，并放在 `/Game/Blueprints/**` 的常规业务目录下。
 2. 点击 Puerts「生成 *.d.ts」或保存蓝图触发声明刷新。
 3. 在 Content Browser 中右键该 Blueprint，选择 **Create Puerts Mixin TS Script**。
-4. 插件会创建 `TypeScript/Mixins/Blueprints/.../BP_Xxx.ts`，并刷新 `blueprint-manifest.json`、`BlueprintCatalog.ts` 与 `_generated/mixin-imports.ts`。
+4. 插件会创建 `TypeScript/Mixins/Blueprints/.../BP_Xxx.ts`，并刷新 `blueprint-manifest.json`、`BlueprintCatalog.ts` 与 `_generated/mixin-imports.{shared,client,server}.ts`。
 
 命令行备用方式：
 
@@ -129,12 +129,13 @@ npm run gen:mixin-index
 - **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动；绑定 `ScriptLifecycle`（shutdown / world cleanup）。  
 - **`TypeScript/Bootstrap/shutdownGame.ts`**：关闭编排，`clearAllMixinRuntimeStates` → `stop` → `dispose`。  
 - **`TypeScript/Runtime/`**：轻量运行时基础层，包括 `MixinState`（UniqueID key）、`runSafely` / `runSafelyAsync`、`guardOwnerAsync`、`ScriptLifecycle` 绑定、模块生命周期、委托/定时器/HTTP 清理、错误边界和脚本版本信息。  
+- **`TypeScript/Game/Core/`**：玩法层基础设施（`NetRole`、`EventBus`）；**`Game/Messages/`** 定义跨模块消息；**`Game/Features/`** 承载业务协调（如 `MovementControlModule`、`DevHttpModule`）。  
 - **`TypeScript/Blueprints/index.ts`**：Blueprint Catalog 运行时入口；手写代码通过这里加载蓝图类、获取类型、注册 mixin。  
 - **`TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**：由 Manifest 生成，集中保存蓝图描述符与类型映射，勿手改。  
-- **`TypeScript/Mixins/register.ts`**：固定引入聚合文件（人工一般不动）。  
-- **`TypeScript/Mixins/_generated/blueprint-manifest.json`**：由插件/脚本维护，记录蓝图 GUID 与一对一 Mixin 映射。  
-- **`TypeScript/Mixins/_generated/mixin-imports.ts`**：**由编辑器插件或 `npm run gen:mixin-index` 生成**，优先按 Manifest 写入 side-effect imports。  
-- **`TypeScript/Game/register.ts`**：业务模块显式注册入口，由 Bootstrap 调用。
+- **`TypeScript/Mixins/register.ts`**：按 `NetRole` 条件加载 `_generated/mixin-imports.{shared,client,server}.ts`（人工一般不动）。  
+- **`TypeScript/Mixins/_generated/blueprint-manifest.json`**：由插件/脚本维护，记录蓝图 GUID、一对一 Mixin 映射与 `executionContext`。  
+- **`TypeScript/Mixins/_generated/mixin-imports.{shared,client,server}.ts`**：**由 `npm run gen:mixin-index` 或编辑器插件生成**，按 executionContext 写入 side-effect imports。  
+- **`TypeScript/Game/register.ts`**：业务模块显式注册入口（按 NetRole 过滤 `executionContext`），由 Bootstrap 调用。
 
 生成的 **相对路径应为 `../Blueprints/xxx`**（从 `_generated` 回到同级 `Mixins/Blueprints`）。若出现异常路径，请先重新编译 **PuertsMixinAutomation** 编辑器模块并触发一次索引生成。
 
@@ -148,7 +149,7 @@ npm run gen:mixin-index
 
 - **`/Typing/`**：Puerts 生成的 UE 声明等（根目录）；勿用无斜杠前缀的 `Typing/`，否则会误忽略 `Plugins/Puerts/Typing`。  
 - **`/TypeScript/Mixins/_generated/blueprint-manifest.json`**：记录蓝图 GUID 与 Mixin 映射；建议提交，便于蓝图重命名同步与团队一致性校验。  
-- **`/TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**、**`/TypeScript/Mixins/_generated/mixin-imports.ts`**：由工具生成，可按团队策略不再提交以减少冲突。**克隆或清理仓库后请先执行 `npm run gen:blueprint-catalog && npm run gen:mixin-index`。**  
+- **`/TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**、**`/TypeScript/Mixins/_generated/mixin-imports.ts`** 及 **`mixin-imports.{shared,client,server}.ts`**：由工具生成，可按团队策略不再提交以减少冲突。**克隆或清理仓库后请先执行 `npm run gen:blueprint-catalog && npm run gen:mixin-index`。**  
 - **`/Content/JavaScript/**/*.js` 与 `.js.map`**：（若保持取消注释）不提交脚本编译产物时，始终以 `tsc` 本地/CI 产出为准。
 
 若这些生成文件曾被提交过，改为「仅本地生成」时可执行一次：

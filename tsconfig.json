@@ -4,6 +4,7 @@
     "outDir": "Content/JavaScript",
     "module": "commonjs",
     "target": "esnext",
+    "moduleResolution": "node10",
     "typeRoots": [
       "Typing",
       "./node_modules/@types"

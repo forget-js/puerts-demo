@@ -479,6 +479,33 @@ Puerts 已生成完整 UE API 声明，AI 和开发者可以查到函数签名�
 
 - 若 Mixin 中确实需要直接调用高风险 UE API，必须在代码评审中说明原因；可复用或容易误用的调用应先补 `GF` 封装。
 
+### 4.10 NetRole 与 Mixin 注册
+
+Mixin 按 **executionContext** 分端加载，避免 Dedicated Server 执行 UMG、Client 误跑 Server-only 逻辑。
+
+| Manifest 字段 | 取值 | 含义 |
+| --- | --- | --- |
+| `executionContext` | `Shared` | 单机/联机各端均需（世界 Actor 等） |
+| | `Client` | 仅本地客户端（Widget、UMG Manager） |
+| | `Server` | 仅权威端（Dedicated / Listen Server 主机侧） |
+
+**NetMode → 加载策略**（`Game/Core/NetRole.ts`）：
+
+| `ENetMode` | Client mixin | Server mixin | Shared mixin |
+| --- | --- | --- | --- |
+| `NM_Standalone` | 是 | 是 | 是 |
+| `NM_Client` | 是 | 否 | 是 |
+| `NM_ListenServer` | 是 | 是 | 是 |
+| `NM_DedicatedServer` | 否 | 是 | 是 |
+
+生成产物：
+
+- `Mixins/_generated/mixin-imports.shared.ts`
+- `Mixins/_generated/mixin-imports.client.ts`
+- `Mixins/_generated/mixin-imports.server.ts`
+
+`Mixins/register.ts` 在启动时根据 `resolveScriptNetRole()` 条件 `require` 上述文件。Manifest 每条 blueprint 必须填写 `executionContext`；新建 Widget / UMG Manager 默认 `Client`。
+
 ---
 
 ## 5. 命名规范
@@ -549,27 +576,38 @@ Puerts 已生成完整 UE API 声明，AI 和开发者可以查到函数签名�
 
 ## 7. 消息与模块通信
 
-（若项目尚未引入全局 Dispatcher，以下为原则性约定，实现时保持语义一致。）
+实现位于 **`TypeScript/Game/Core/EventBus.ts`**（Post-only 异步总线）与 **`TypeScript/Game/Messages/`**（按业务域定义消息常量）。Feature 模块在 **`TypeScript/Game/Features/`** 订阅消息并协调业务；Mixin 只负责把 UE 事件「翻译」为 `EventBus.post` 或 Feature 调用。
 
 | 场景 | 做法 |
 | --- | --- |
-| 大模块之间 | **禁止**直接修改对方成员；通过消息 / 事件总线通知 |
+| 大模块之间 | **禁止**直接修改对方成员；通过 EventBus / Feature 通知 |
+| Mixin ↔ 跨 Actor / UI | **禁止** `GetActorOfClass` 扫场景；发消息或由 Feature 维护注册表 |
 | 模块内部 | 直接方法调用即可，避免过度抽象 |
 | 新增全局消息 | 需主管审核 |
-| 同步 vs 异步 | 默认 Post（异步）；Send（同步）需审批 |
+| 同步 vs 异步 | 默认 Post（异步）；Send（同步）接口预留，需审批后实现 |
 
-消息定义示例：
+EventBus API：
 
 ```typescript
-/** 拾取道具 */
-export const ITEM_PICKUP = {
-    name: 'ITEM_PICKUP',
+import { post, subscribe, unsubscribe } from '../Game/Core/EventBus';
+
+subscribe(MOVEMENT_TOGGLE_REQUEST.name, (sender, payload) => { /* ... */ });
+post(this, MOVEMENT_TOGGLE_REQUEST.name, { controllerId: 'cone-1' });
+```
+
+消息定义示例（`Game/Messages/movement.ts`）：
+
+```typescript
+/** 请求切换运动暂停状态 */
+export const MOVEMENT_TOGGLE_REQUEST = {
+    name: 'MOVEMENT_TOGGLE_REQUEST',
     params: {
-        /** 武器对象 */
-        grabObj: { index: 1, type: 'object', required: true },
+        controllerId: { index: 1, type: 'string', required: false },
     },
 } as const;
 ```
+
+Feature 示例：`MovementControlModule`（Shared）维护 controller 注册表并订阅 `MOVEMENT_TOGGLE_REQUEST`；`DevHttpModule`（Client + `Config.features.devHttp.enabled`）负责开发态 HTTP Transport 与联调序列。**Messages 与 Features 为多对多关系**，按职责划分而非一一对应。
 
 ---
 

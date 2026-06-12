@@ -21,6 +21,13 @@ if (!fs.existsSync(exampleFile)) {
 }
 
 if (fs.existsSync(targetFile)) {
+    const content = fs.readFileSync(targetFile, 'utf8');
+    if (!content.includes('devHttp')) {
+        console.warn(
+            '[ensure-config-dev] config.dev.ts missing features.devHttp; Map_Test HTTP demo is disabled by default.',
+            'Add features.devHttp.enabled: true (see config.dev.example.ts).'
+        );
+    }
     console.log(`[ensure-config-dev] ok (exists) ${path.relative(projectRoot, targetFile)}`);
     process.exit(0);
 }
