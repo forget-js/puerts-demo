@@ -35,6 +35,11 @@ export interface AppConfig {
             retryStatusCodes: number[];
         };
     };
+    features: {
+        devHttp: {
+            enabled: boolean;
+        };
+    };
 }
 
 export const configDefault: AppConfig = {
@@ -64,6 +69,11 @@ export const configDefault: AppConfig = {
             maxDelayMs: 2000,
             retryMethods: ['GET', 'HEAD'],
             retryStatusCodes: [408, 429, 500, 502, 503, 504],
+        },
+    },
+    features: {
+        devHttp: {
+            enabled: false,
         },
     },
 };

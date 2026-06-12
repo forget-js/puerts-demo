@@ -40,6 +40,14 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
                 ...override.http?.retry,
             },
         },
+        features: {
+            ...base.features,
+            ...override.features,
+            devHttp: {
+                ...base.features.devHttp,
+                ...override.features?.devHttp,
+            },
+        },
     };
 }
 

@@ -38,4 +38,9 @@ export const configDev: Partial<AppConfig> = {
             retryStatusCodes: [408, 429, 500, 502, 503, 504],
         },
     },
+    features: {
+        devHttp: {
+            enabled: true,
+        },
+    },
 };

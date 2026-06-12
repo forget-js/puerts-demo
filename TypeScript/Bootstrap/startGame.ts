@@ -16,6 +16,7 @@ import {
     runSafely,
     ScriptBuildInfo,
 } from '../Runtime';
+import { resolveScriptNetRole } from '../Game/Core/NetRole';
 import { bindScriptLifecycle } from '../Runtime/ScriptLifecycle';
 import { registerGameModules } from '../Game/register';
 
@@ -50,7 +51,8 @@ export function startGame(onShutdownReady?: () => void): ModuleRegistry {
         });
 
         const registry = new ModuleRegistry();
-        registerGameModules(registry);
+        const role = resolveScriptNetRole();
+        registerGameModules(registry, role);
         registry.initAll();
         registry.startAll();
 

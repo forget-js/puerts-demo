@@ -72,11 +72,14 @@ class ApiService implements ApiHttpDeps {
         this.transport = undefined;
     }
 
-    /** 替换 Transport (如单测注入 MockHttpTransport); 会 cancel 旧 Transport 上的未完成请求. */
+    /** 替换 Transport; Shipping 禁止; 业务代码请使用 setTransportForDev. */
     setTransport(transport: HttpTransport): void {
-        this.transport?.cancelAll?.();
-        this.transport = transport;
-        this.client = undefined;
+        if (Config.app.environment === 'Shipping') {
+            LOGGER.Warn('Api.setTransport is not allowed in Shipping.', { toScreen: false });
+            return;
+        }
+
+        this.applyTransport(transport);
     }
 
     setBearerTokenProvider(provider?: BearerTokenProvider): void {
@@ -124,12 +127,28 @@ class ApiService implements ApiHttpDeps {
 
         return this.client as HttpClient;
     }
+
+    private applyTransport(transport: HttpTransport): void {
+        this.transport?.cancelAll?.();
+        this.transport = transport;
+        this.client = undefined;
+    }
 }
 
 export const Api = new ApiService();
 
+/** 开发态 Transport 注入 (DevHttp / 单测); Shipping 禁止. */
+export function setTransportForDev(transport: HttpTransport): void {
+    if (Config.app.environment === 'Shipping') {
+        throw new Error('setTransportForDev is not allowed in Shipping.');
+    }
+
+    Api.setTransport(transport);
+}
+
 export const ApiModule: GameModule = {
     name: 'Api',
+    executionContext: 'Shared',
     init(): void {
         Api.init();
     },
