@@ -5,6 +5,7 @@
  * 1. Manifest 中的 mixin 文件、Catalog 符号、mixin 类名与源码一致
  * 2. 重命名后的旧 Catalog 符号不得继续被引用
  * 3. BlueprintCatalog.ts 与 mixin-imports.ts 和 Manifest 同步
+ * 4. 使用 getMixinRuntimeState 的 Mixin 必须配对 clearMixinRuntimeState
  *
  * 蓝图硬编码路径与 console.* 规则由 ESLint 负责 (npm run lint).
  *
@@ -125,6 +126,32 @@ function checkPreviousSymbols(projectRoot, manifest, catalogFile) {
   return errors;
 }
 
+/**
+ * 使用 getMixinRuntimeState 的 Mixin 必须在 EndPlay/Destruct 中调用 clearMixinRuntimeState.
+ */
+function checkMixinStatePairing(projectRoot, catalogFile) {
+  const errors = [];
+  const mixinRoot = path.resolve(projectRoot, 'TypeScript/Mixins/Blueprints');
+
+  for (const file of walkTypeScriptFiles(mixinRoot)) {
+    if (isGeneratedFile(file, catalogFile)) {
+      continue;
+    }
+
+    const source = fs.readFileSync(file, 'utf8');
+    const usesGet = /getMixinRuntimeState\s*\(/.test(source);
+    const usesClear = /clearMixinRuntimeState\s*\(/.test(source);
+    if (usesGet && !usesClear) {
+      const relativeFile = path.relative(projectRoot, file).replace(/\\/g, '/');
+      errors.push(
+        `${relativeFile}: uses getMixinRuntimeState but missing clearMixinRuntimeState in EndPlay/Destruct.`
+      );
+    }
+  }
+
+  return errors;
+}
+
 // --- 路径配置 (均可通过 CLI 覆盖) ---
 
 const projectRoot = path.resolve(readArg('project', process.cwd()));
@@ -139,6 +166,7 @@ const manifest = loadManifest(manifestFile);
 
 errors.push(...checkManifestEntries(projectRoot, manifest));
 errors.push(...checkPreviousSymbols(projectRoot, manifest, catalogFile));
+errors.push(...checkMixinStatePairing(projectRoot, catalogFile));
 
 // 生成产物与 Manifest 推导结果逐字比对, 不一致则提示重新生成
 const expectedCatalogSource = makeCatalogSource(manifest);

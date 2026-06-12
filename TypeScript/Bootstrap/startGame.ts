@@ -5,18 +5,18 @@
  * 本层只做启动顺序编排, 禁止写入具体玩法逻辑 (见 CodeFormat 3 / 10 节).
  */
 
-import { argv } from 'puerts';
-import * as UE from 'ue';
-
 import { Config } from '../Config/Config';
 import { GF } from '../Global';
 import {
+    clearAllMixinRuntimeStates,
     createRuntimeDiagnostics,
+    getMixinRuntimeStateCount,
     installGlobalErrorHandlers,
     ModuleRegistry,
     runSafely,
     ScriptBuildInfo,
 } from '../Runtime';
+import { bindScriptLifecycle } from '../Runtime/ScriptLifecycle';
 import { registerGameModules } from '../Game/register';
 
 declare const require: (moduleName: string) => unknown;
@@ -34,6 +34,10 @@ const LOGGER = GF.CreateLogger(MODULE_NAME);
 export function startGame(onShutdownReady?: () => void): ModuleRegistry {
     // 尽早安装, 覆盖 Mixin require 与模块 init 中可能抛出的未捕获异常.
     installGlobalErrorHandlers();
+    LOGGER.Verbose(
+        'Global onerror/onunhandledrejection installed; prefer runSafelyAsync for async work and HttpTask.catch in Puerts.',
+        { toScreen: false }
+    );
 
     return runSafely(MODULE_NAME, () => {
         LOGGER.Log(`Starting game scripts (${Config.app.environment}, ${ScriptBuildInfo.version})`, {
@@ -52,27 +56,19 @@ export function startGame(onShutdownReady?: () => void): ModuleRegistry {
 
         const diagnostics = createRuntimeDiagnostics(registry.getRegisteredModuleNames());
         LOGGER.Log(`Game scripts started. Modules: ${diagnostics.modules.join(', ') || 'none'}`, {
+            context: { mixinStateCount: diagnostics.mixinStateCount },
             toScreen: false,
         });
 
-        bindScriptLifecycle(onShutdownReady);
+        bindScriptLifecycle({
+            onShutdown: onShutdownReady,
+            onWorldCleanup: () => {
+                const count = getMixinRuntimeStateCount();
+                clearAllMixinRuntimeStates();
+                LOGGER.Verbose(`World cleanup cleared ${count} mixin runtime state(s).`, { toScreen: false });
+            },
+        });
 
         return registry;
     }) as ModuleRegistry;
-}
-
-/** 将 shutdown 回调注册到 PuertsScriptHost 注入的 ScriptLifecycle. */
-function bindScriptLifecycle(onShutdown?: () => void): void {
-    if (!onShutdown) {
-        return;
-    }
-
-    const lifecycle = argv.getByName('ScriptLifecycle');
-    if (!(lifecycle instanceof UE.PuertsScriptLifecycle)) {
-        LOGGER.Warn('ScriptLifecycle argv missing; shutdown will not run on exit.', { toScreen: false });
-        return;
-    }
-
-    // d.ts 中 BindShutdown 参数为 object; 无参函数需显式转换.
-    lifecycle.BindShutdown(onShutdown as object);
 }

@@ -17,25 +17,22 @@ export interface MixinRuntimeState {
 }
 
 type UnrealObjectLike = object & {
-    GetPathName?: () => string;
-    GetName?: () => string;
+    GetUniqueID?: () => number;
 };
 
-// Puerts 可能为同一个 UObject 生成不同 JS wrapper, 因此 UObject 状态必须使用稳定字符串 key。
-const mixinStatesByObjectKey = new Map<string, MixinRuntimeState>();
+// Puerts 可能为同一个 UObject 生成不同 JS wrapper, 因此 UObject 状态使用 GetUniqueID 作 key.
+const mixinStatesByUniqueId = new Map<number, MixinRuntimeState>();
 
 // 普通 JS 对象仍使用 WeakMap, 避免全局 Map 长期持有已销毁对象.
 const mixinStates = new WeakMap<object, MixinRuntimeState>();
 
-function getStableObjectKey(owner: object): string | undefined {
-    const unrealObject = owner as UnrealObjectLike;
-    const pathName = unrealObject.GetPathName?.();
-    if (pathName) {
-        return pathName;
+function getStableObjectId(owner: object): number | undefined {
+    const uniqueId = (owner as UnrealObjectLike).GetUniqueID?.();
+    if (typeof uniqueId === 'number' && uniqueId > 0) {
+        return uniqueId;
     }
 
-    const name = unrealObject.GetName?.();
-    return name ? `name:${name}` : undefined;
+    return undefined;
 }
 
 function createMixinRuntimeState(): MixinRuntimeState {
@@ -46,20 +43,26 @@ function createMixinRuntimeState(): MixinRuntimeState {
     };
 }
 
+function disposeMixinRuntimeState(state: MixinRuntimeState): void {
+    state.delegates.clear();
+    state.timers.clearAll();
+    state.requests.cancelAll();
+}
+
 /**
  * 获取或懒创建 owner 的运行时状态.
  * @param owner Mixin 实例, 一般传 this.
  */
 export function getMixinRuntimeState(owner: object): MixinRuntimeState {
-    const objectKey = getStableObjectKey(owner);
-    if (objectKey) {
-        let state = mixinStatesByObjectKey.get(objectKey);
+    const uniqueId = getStableObjectId(owner);
+    if (uniqueId !== undefined) {
+        let state = mixinStatesByUniqueId.get(uniqueId);
         if (state) {
             return state;
         }
 
         state = createMixinRuntimeState();
-        mixinStatesByObjectKey.set(objectKey, state);
+        mixinStatesByUniqueId.set(uniqueId, state);
         return state;
     }
 
@@ -78,20 +81,31 @@ export function getMixinRuntimeState(owner: object): MixinRuntimeState {
  * @param owner 与 getMixinRuntimeState 传入的同一实例.
  */
 export function clearMixinRuntimeState(owner: object): void {
-    const objectKey = getStableObjectKey(owner);
-    const state = objectKey ? mixinStatesByObjectKey.get(objectKey) : mixinStates.get(owner);
+    const uniqueId = getStableObjectId(owner);
+    const state = uniqueId !== undefined ? mixinStatesByUniqueId.get(uniqueId) : mixinStates.get(owner);
     if (!state) {
         return;
     }
 
-    state.delegates.clear();
-    state.timers.clearAll();
-    state.requests.cancelAll();
+    disposeMixinRuntimeState(state);
 
-    if (objectKey) {
-        mixinStatesByObjectKey.delete(objectKey);
+    if (uniqueId !== undefined) {
+        mixinStatesByUniqueId.delete(uniqueId);
         return;
     }
 
     mixinStates.delete(owner);
+}
+
+/** 清空全部 UObject 级 Mixin 状态 (World Cleanup / 脚本 Shutdown 兜底). */
+export function clearAllMixinRuntimeStates(): void {
+    for (const state of mixinStatesByUniqueId.values()) {
+        disposeMixinRuntimeState(state);
+    }
+    mixinStatesByUniqueId.clear();
+}
+
+/** 当前 UObject 级 Mixin 状态条目数, 供 Diagnostics 与泄漏排查. */
+export function getMixinRuntimeStateCount(): number {
+    return mixinStatesByUniqueId.size;
 }

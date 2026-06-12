@@ -4,6 +4,13 @@ export { createRuntimeDiagnostics, type RuntimeDiagnostics } from './Diagnostics
 export { DelegateBag, type RemovableDelegate } from './DelegateBag';
 export { installGlobalErrorHandlers, reportError, runSafely } from './ErrorBoundary';
 export * from './Http';
-export { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from './MixinState';
+export {
+    clearAllMixinRuntimeStates,
+    clearMixinRuntimeState,
+    getMixinRuntimeState,
+    getMixinRuntimeStateCount,
+    type MixinRuntimeState,
+} from './MixinState';
+export { bindScriptLifecycle, type ScriptLifecycleBindings } from './ScriptLifecycle';
 export { type GameModule, ModuleRegistry } from './ModuleRegistry';
 export { TimerBag } from './TimerBag';

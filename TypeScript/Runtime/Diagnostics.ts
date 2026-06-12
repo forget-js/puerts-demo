@@ -6,6 +6,7 @@
 
 import { Config } from '../Config/Config';
 import { ScriptBuildInfo } from './BuildInfo';
+import { getMixinRuntimeStateCount } from './MixinState';
 
 /** 一次启动时可记录的诊断字段集合. */
 export interface RuntimeDiagnostics {
@@ -14,6 +15,7 @@ export interface RuntimeDiagnostics {
     builtAt: string;
     commit: string;
     modules: string[];
+    mixinStateCount: number;
 }
 
 /**
@@ -27,5 +29,6 @@ export function createRuntimeDiagnostics(modules: string[] = []): RuntimeDiagnos
         builtAt: ScriptBuildInfo.builtAt,
         commit: ScriptBuildInfo.commit,
         modules,
+        mixinStateCount: getMixinRuntimeStateCount(),
     };
 }
