@@ -10,6 +10,8 @@ import { runSafely } from './ErrorBoundary';
 /** 可注册的游戏业务模块; 生命周期钩子均为可选. */
 export interface GameModule {
     readonly name: string;
+    /** Mixin 分端策略对齐; 默认 Shared. */
+    readonly executionContext?: 'Shared' | 'Client' | 'Server';
     init?(): void;
     start?(): void;
     stop?(): void;
