@@ -9,6 +9,28 @@ import path from 'node:path';
 
 export const MANIFEST_VERSION = 1;
 
+export const EXECUTION_CONTEXTS = ['Shared', 'Client', 'Server'];
+
+/** 规范化 Mixin 分端执行上下文. */
+export function normalizeExecutionContext(value, fallback = 'Shared') {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (EXECUTION_CONTEXTS.includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+/** Widget / UMG 类 mixin 默认 Client, 其余 Shared. */
+export function inferExecutionContext(assetName) {
+  if (/^WBP_/i.test(assetName) || /UMG/i.test(assetName)) {
+    return 'Client';
+  }
+  if (/^BP_UMG/i.test(assetName)) {
+    return 'Client';
+  }
+  return 'Shared';
+}
+
 /** 规范化项目相对路径，便于 C++ 插件和 Node 脚本共用同一配置值。 */
 export function normalizeProjectRelativePath(projectRelativePath) {
   return projectRelativePath.trim().replace(/\\/g, '/').replace(/^\/+/, '');
@@ -83,7 +105,7 @@ export function makeBlueprintGuid(packageName, explicitGuid) {
 }
 
 /** 根据蓝图包路径生成 Manifest 条目，并保持 mixin 文件与蓝图一对一命名。 */
-export function makeBlueprintEntry({ packageName, rootPath, mixinRoot, guid }) {
+export function makeBlueprintEntry({ packageName, rootPath, mixinRoot, guid, executionContext }) {
   const normalizedPackageName = packageName.trim().replace(/\\/g, '/');
   const assetName = getAssetName(normalizedPackageName);
   const relativePackagePath = makeRelativePackagePath(normalizedPackageName, rootPath);
@@ -102,6 +124,7 @@ export function makeBlueprintEntry({ packageName, rootPath, mixinRoot, guid }) {
     catalogSymbol: `${safeAssetName}Blueprint`,
     previousCatalogSymbols: [],
     autoManaged: true,
+    executionContext: normalizeExecutionContext(executionContext, inferExecutionContext(assetName)),
   };
 }
 

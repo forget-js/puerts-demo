@@ -14,7 +14,8 @@
         "BP_TestBlueprint",
         "BP_ConeBlueprint"
       ],
-      "autoManaged": true
+      "autoManaged": true,
+      "executionContext": "Shared"
     },
     {
       "blueprintGuid": "309FFCEC-4AA6-3A9E-1C7B-0893A7AD7C7A",
@@ -28,7 +29,8 @@
       "previousCatalogSymbols": [
         "BP_ActorBlueprint"
       ],
-      "autoManaged": true
+      "autoManaged": true,
+      "executionContext": "Shared"
     },
     {
       "blueprintGuid": "legacy:/Game/Blueprints/Actors/BP_UMGManager",
@@ -40,7 +42,8 @@
       "mixinClassName": "BP_UMGManagerMixin",
       "catalogSymbol": "BP_UMGManagerBlueprint",
       "previousCatalogSymbols": [],
-      "autoManaged": true
+      "autoManaged": true,
+      "executionContext": "Client"
     },
     {
       "blueprintGuid": "D567E919-4DC0-3758-15AA-08BA066B2714",
@@ -54,7 +57,8 @@
       "previousCatalogSymbols": [
         "WBP_TestBlueprint"
       ],
-      "autoManaged": true
+      "autoManaged": true,
+      "executionContext": "Client"
     },
     {
       "blueprintGuid": "legacy:/Game/Blueprints/BP_Cube",
@@ -66,7 +70,8 @@
       "mixinClassName": "BP_CubeMixin",
       "catalogSymbol": "BP_CubeBlueprint",
       "previousCatalogSymbols": [],
-      "autoManaged": true
+      "autoManaged": true,
+      "executionContext": "Shared"
     }
   ]
 }

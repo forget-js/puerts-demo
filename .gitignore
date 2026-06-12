@@ -82,6 +82,9 @@ pnpm-debug.log*
 # -----------------------------------------------------------------------------
 /TypeScript/Blueprints/_generated/BlueprintCatalog.ts
 /TypeScript/Mixins/_generated/mixin-imports.ts
+/TypeScript/Mixins/_generated/mixin-imports.shared.ts
+/TypeScript/Mixins/_generated/mixin-imports.client.ts
+/TypeScript/Mixins/_generated/mixin-imports.server.ts
 
 # 本地开发配置覆盖（复制 Config/Env/config.dev.example.ts 为 config.dev.ts）
 /TypeScript/Config/Env/config.dev.ts
