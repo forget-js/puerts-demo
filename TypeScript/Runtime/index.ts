@@ -2,8 +2,9 @@
 export { ScriptBuildInfo, type ScriptBuildInfo as ScriptBuildInfoShape } from './BuildInfo';
 export { createRuntimeDiagnostics, type RuntimeDiagnostics } from './Diagnostics';
 export { DelegateBag, type RemovableDelegate } from './DelegateBag';
-export { installGlobalErrorHandlers, reportError, runSafely } from './ErrorBoundary';
+export { installGlobalErrorHandlers, reportError, runSafely, runSafelyAsync } from './ErrorBoundary';
 export * from './Http';
+export { guardOwner, guardOwnerAsync, isOwnerValid } from './ObjectValidity';
 export {
     clearAllMixinRuntimeStates,
     clearMixinRuntimeState,

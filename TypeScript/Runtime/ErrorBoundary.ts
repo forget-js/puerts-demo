@@ -43,6 +43,26 @@ export function runSafely<T>(scope: string, fn: () => T, options: ErrorBoundaryO
     }
 }
 
+/**
+ * 执行 async fn 并捕获同步 throw 与 Promise rejection; 默认记录后 rethrow.
+ * @param scope 错误日志中的上下文标识.
+ */
+export async function runSafelyAsync<T>(
+    scope: string,
+    fn: () => Promise<T>,
+    options: ErrorBoundaryOptions = {}
+): Promise<T | undefined> {
+    try {
+        return await fn();
+    } catch (error) {
+        reportError(scope, error);
+        if (options.rethrow ?? true) {
+            throw error;
+        }
+        return undefined;
+    }
+}
+
 /** 安装全局未捕获错误处理器; 重复调用无副作用, 会链式保留既有 handler. */
 export function installGlobalErrorHandlers(): void {
     if (globalHandlersInstalled) {
