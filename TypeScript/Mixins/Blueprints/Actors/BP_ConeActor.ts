@@ -9,15 +9,14 @@
  */
 import * as UE from 'ue';
 import { BP_ConeActorBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../../Blueprints';
-import { GF, GE } from '../../../Global';
-import { Api } from '../../../Game/Services';
+import { MovementControl, type MovementController } from '../../../Game/Features/MovementControl';
+import { DevHttp } from '../../../Game/Features/DevHttp';
+import { GF } from '../../../Global';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
     guardOwnerAsync,
-    HttpError,
     runSafelyAsync,
-    UnrealHttpTransport,
     type MixinRuntimeState,
 } from '../../../Runtime';
 
@@ -40,6 +39,7 @@ interface OrbitRuntimeState {
 interface BP_ConeActorRuntimeState extends MixinRuntimeState {
     orbit?: OrbitRuntimeState;
     isMovementPaused?: boolean;
+    movementController?: MovementController;
 }
 
 // ===========================================================================
@@ -59,8 +59,9 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
             angle: 0,
         };
         state.isMovementPaused = false;
-        void runSafelyAsync('BP_ConeActor.runTestUserHttpDemo', () =>
-            guardOwnerAsync(this, 'BP_ConeActor.runTestUserHttpDemo', async () => this.runTestUserHttpDemo())
+        this.registerMovementController();
+        void runSafelyAsync('BP_ConeActor.runConeUserFlow', () =>
+            guardOwnerAsync(this, 'BP_ConeActor.runConeUserFlow', async () => this.runConeUserFlow())
         );
     }
 
@@ -73,6 +74,7 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
     }
 
     ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
+        this.unregisterMovementController();
         clearMixinRuntimeState(this);
     }
 
@@ -99,6 +101,23 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
 
     private getRuntimeState(): BP_ConeActorRuntimeState {
         return getMixinRuntimeState(this) as BP_ConeActorRuntimeState;
+    }
+
+    private registerMovementController(): void {
+        const controller: MovementController = {
+            controllerId: this.GetName(),
+            toggleMovementPaused: () => this.ToggleMovementPaused(),
+        };
+
+        this.getRuntimeState().movementController = controller;
+        MovementControl.registerController(controller);
+    }
+
+    private unregisterMovementController(): void {
+        const controller = this.getRuntimeState().movementController;
+        if (controller) {
+            MovementControl.unregisterController(controller);
+        }
     }
 
     // ===========================================================================
@@ -134,44 +153,8 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
         GF.SetActorLocation(this, newLocation);
     }
 
-    // ===========================================================================
-    //                                  测试域 HTTP 演示
-    // ===========================================================================
-
-    private async runTestUserHttpDemo(): Promise<void> {
-        // BP_Cube 等演示会把 Api 切到 MockHttpTransport; 联调 Apifox 前恢复真实 Transport.
-        Api.setTransport(new UnrealHttpTransport());
-
-        const options = { owner: this };
-        const demoUser = {
-            username: 'ConeDemoUser',
-            firstName: 'Cone',
-            lastName: 'Actor',
-            email: 'cone.demo@example.com',
-            password: 'demo-password',
-            phone: '13800000000',
-            userStatus: 0,
-        };
-
-        try {
-            await Api.testUser.createUser(demoUser, options);
-            GF.LogPrettyJson(this, 'testUser.createUser', { username: demoUser.username });
-
-            const user = await Api.testUser.getUserByName(demoUser.username, options);
-            GF.LogPrettyJson(this, 'testUser.getUserByName', user);
-
-            await Api.testUser.updateUser(demoUser.username, { ...user, firstName: 'ConeUpdated' }, options);
-            GF.LogPrettyJson(this, 'testUser.updateUser', { username: demoUser.username });
-
-            await Api.testUser.deleteUser(demoUser.username, options);
-            GF.LogPrettyJson(this, 'testUser.deleteUser', { username: demoUser.username });
-        } catch (error) {
-            const message =
-                error instanceof HttpError
-                    ? `${error.kind}: ${error.message}${error.url ? ` (${error.method ?? '?'} ${error.url})` : ''}`
-                    : String(error);
-            GF.LogPrettyJson(this, 'testUser HTTP demo failed', { message }, { level: GE.LogLevel.Warning });
-        }
+    private async runConeUserFlow(): Promise<void> {
+        await DevHttp.runConeUserFlow(this);
     }
 }
 

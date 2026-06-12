@@ -1,16 +1,11 @@
 /**
  * [模块说明] WBP_Test: 显示游戏运行秒数并控制 BP_Test 运动.
  * DONE  1. SetGameSecond 更新文本控件
- * DONE  2. 点击按钮暂停/恢复 BP_Test 运动
+ * DONE  2. 点击按钮通过 EventBus 请求暂停/恢复运动
  */
-import * as UE from 'ue';
-import {
-    BP_ConeActorBlueprint,
-    WBP_GameTimeBlueprint,
-    loadBlueprintClass,
-    registerBlueprintMixin,
-    type BlueprintInstance,
-} from '../../../Blueprints';
+import { WBP_GameTimeBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../../Blueprints';
+import { post } from '../../../Game/Core/EventBus';
+import { MOVEMENT_TOGGLE_REQUEST } from '../../../Game/Messages/movement';
 import { GF } from '../../../Global';
 import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } from '../../../Runtime';
 
@@ -20,23 +15,9 @@ import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } 
 
 const GAME_TIME_TEXT_PREFIX = '游戏时间';
 
-let cachedConeActorClass: UE.Class | undefined;
-
-function getConeActorClass(): UE.Class {
-    if (!cachedConeActorClass) {
-        cachedConeActorClass = loadBlueprintClass(BP_ConeActorBlueprint);
-    }
-
-    return cachedConeActorClass;
-}
-
 // ===========================================================================
 //                                   运行时状态
 // ===========================================================================
-
-interface MovementControlActor extends BlueprintInstance<typeof BP_ConeActorBlueprint> {
-    ToggleMovementPaused(): boolean;
-}
 
 interface WBP_TestRuntimeState extends MixinRuntimeState {
     isToggleButtonBound?: boolean;
@@ -96,16 +77,7 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
     }
 
     private onToggleButtonClicked(): void {
-        const coneActor = UE.GameplayStatics.GetActorOfClass(this, getConeActorClass()) as
-            | MovementControlActor
-            | undefined;
-
-        if (!coneActor || typeof coneActor.ToggleMovementPaused !== 'function') {
-            GF.Warn(this, 'BP_ConeActor missing or not initialized');
-            return;
-        }
-
-        coneActor.ToggleMovementPaused();
+        post(this, MOVEMENT_TOGGLE_REQUEST.name, {});
     }
 }
 
