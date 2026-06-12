@@ -5,7 +5,9 @@
 #include "PuertsScriptLifecycle.h"
 #include "PuertsSetting.h"
 
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "PuertsNamespaceDef.h"
 #include "JsEnv.h"
 #include "JSLogger.h"
@@ -49,6 +51,7 @@ void UPuertsScriptHostSubsystem::StartScripts()
     const FString EntryModule = HostSettings->EntryModule.IsEmpty() ? TEXT("Main") : HostSettings->EntryModule;
     JsEnv->Start(EntryModule, Arguments);
     bRunning = true;
+    RegisterWorldCleanupDelegate();
 
     UE_LOG(LogPuertsScriptHost, Log, TEXT("Puerts scripts started (entry=%s)."), *EntryModule);
 }
@@ -59,6 +62,8 @@ void UPuertsScriptHostSubsystem::StopScripts()
     {
         return;
     }
+
+    UnregisterWorldCleanupDelegate();
 
     if (Lifecycle && Lifecycle->HasShutdownCallback())
     {
@@ -134,4 +139,45 @@ int32 UPuertsScriptHostSubsystem::ResolveDebugPort() const
 
     return FPuertsScriptHostDebuggerPort::Resolve(PuertsSettings.DebugPort);
 #endif
+}
+
+void UPuertsScriptHostSubsystem::RegisterWorldCleanupDelegate()
+{
+    if (WorldCleanupDelegateHandle.IsValid())
+    {
+        return;
+    }
+
+    WorldCleanupDelegateHandle = FWorldDelegates::OnWorldCleanup.AddUObject(
+        this, &UPuertsScriptHostSubsystem::HandleWorldCleanup);
+}
+
+void UPuertsScriptHostSubsystem::UnregisterWorldCleanupDelegate()
+{
+    if (!WorldCleanupDelegateHandle.IsValid())
+    {
+        return;
+    }
+
+    FWorldDelegates::OnWorldCleanup.Remove(WorldCleanupDelegateHandle);
+    WorldCleanupDelegateHandle.Reset();
+}
+
+void UPuertsScriptHostSubsystem::HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources)
+{
+    if (!bRunning || !Lifecycle || !World)
+    {
+        return;
+    }
+
+    const UGameInstance* GameInstance = GetGameInstance();
+    if (!GameInstance || GameInstance->GetWorld() != World)
+    {
+        return;
+    }
+
+    if (Lifecycle->HasWorldCleanupCallback())
+    {
+        Lifecycle->InvokeWorldCleanup();
+    }
 }

@@ -6,6 +6,12 @@ void UPuertsScriptLifecycle::BindShutdown(const FJsObject& Callback)
     bShutdownBound = true;
 }
 
+void UPuertsScriptLifecycle::BindWorldCleanup(const FJsObject& Callback)
+{
+    WorldCleanupCallback = Callback;
+    bWorldCleanupBound = true;
+}
+
 void UPuertsScriptLifecycle::InvokeShutdown()
 {
     if (!bShutdownBound)
@@ -17,4 +23,14 @@ void UPuertsScriptLifecycle::InvokeShutdown()
     ShutdownCallback.Action();
     ShutdownCallback = FJsObject();
     bShutdownBound = false;
+}
+
+void UPuertsScriptLifecycle::InvokeWorldCleanup()
+{
+    if (!bWorldCleanupBound)
+    {
+        return;
+    }
+
+    WorldCleanupCallback.Action();
 }

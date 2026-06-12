@@ -12,6 +12,7 @@ class FJsEnv;
 }
 
 class UPuertsScriptLifecycle;
+class UWorld;
 
 /**
  * Puerts 脚本宿主 Subsystem: 唯一 FJsEnv 持有者.
@@ -42,8 +43,12 @@ private:
     void CreateJsEnv();
     FString ResolveScriptRootPath() const;
     int32 ResolveDebugPort() const;
+    void RegisterWorldCleanupDelegate();
+    void UnregisterWorldCleanupDelegate();
+    void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 
     TSharedPtr<PUERTS_NAMESPACE::FJsEnv> JsEnv;
     TObjectPtr<UPuertsScriptLifecycle> Lifecycle;
+    FDelegateHandle WorldCleanupDelegateHandle;
     bool bRunning = false;
 };
