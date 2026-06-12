@@ -49,14 +49,14 @@ npm run build             # 写入脚本版本信息，生成 Catalog / 索引�
 4. 选择 GameInstance 接入方式（二选一）：
    - **有自定义 GameInstance**：在 `OnStart` 中调用 `GetSubsystem<UPuertsScriptHostSubsystem>()->StartScripts()`（本仓库 `MyGameInstance` 即此方式）  
    - **零自定义 C++**：`DefaultEngine.ini` 设置 `GameInstanceClass=/Script/PuertsScriptHost.GameScriptHostGameInstance`  
-5. 确保 TS 在 `startGame` 末尾通过 `puerts.argv.getByName('ScriptLifecycle')` 绑定 shutdown（本仓库已实现）
+5. 确保 TS 在 `startGame` 末尾通过 `ScriptLifecycle` 绑定 shutdown 与 world cleanup（本仓库经 `Runtime/ScriptLifecycle.ts` 已实现）
 
 ### 插件职责
 
 | 组件 | 说明 |
 | --- | --- |
-| `UPuertsScriptHostSubsystem` | 唯一 `FJsEnv` 持有者；`StartScripts` / `StopScripts`；`Deinitialize` 时触发 TS shutdown |
-| `UPuertsScriptLifecycle` | `BindShutdown` / `InvokeShutdown`，桥接 C++ 与 TS 关闭回调 |
+| `UPuertsScriptHostSubsystem` | 唯一 `FJsEnv` 持有者；`StartScripts` / `StopScripts`；订阅 `OnWorldCleanup`；`Deinitialize` 时触发 TS shutdown |
+| `UPuertsScriptLifecycle` | `BindShutdown` / `BindWorldCleanup`，桥接 C++ 与 TS 关闭及关卡清理回调 |
 | `UGameScriptHostGameInstance` | 可选基类，免写项目 GameInstance |
 | `UPuertsScriptHostSettings` | 入口模块名（默认 `Main`）、argv 注入开关；**Edit → Project Settings → Plugins → Puerts Script Host** |
 
@@ -126,8 +126,9 @@ npm run gen:mixin-index
 ## TypeScript 入口约定（降低合并冲突）
 
 - **`TypeScript/Main.ts`**：常驻入口，只调用 `Bootstrap/startGame`。  
-- **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动。  
-- **`TypeScript/Runtime/`**：轻量运行时基础层，包括模块生命周期、委托清理、定时器清理、错误边界和脚本版本信息。  
+- **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动；绑定 `ScriptLifecycle`（shutdown / world cleanup）。  
+- **`TypeScript/Bootstrap/shutdownGame.ts`**：关闭编排，`clearAllMixinRuntimeStates` → `stop` → `dispose`。  
+- **`TypeScript/Runtime/`**：轻量运行时基础层，包括 `MixinState`（UniqueID key）、`runSafely` / `runSafelyAsync`、`guardOwnerAsync`、`ScriptLifecycle` 绑定、模块生命周期、委托/定时器/HTTP 清理、错误边界和脚本版本信息。  
 - **`TypeScript/Blueprints/index.ts`**：Blueprint Catalog 运行时入口；手写代码通过这里加载蓝图类、获取类型、注册 mixin。  
 - **`TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**：由 Manifest 生成，集中保存蓝图描述符与类型映射，勿手改。  
 - **`TypeScript/Mixins/register.ts`**：固定引入聚合文件（人工一般不动）。  

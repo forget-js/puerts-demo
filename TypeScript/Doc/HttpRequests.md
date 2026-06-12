@@ -74,8 +74,24 @@ async TS_LoadUserProfile(): Promise<void> {
 ```
 
 - 传入 `owner: this` 后, 请求会登记到当前 Mixin 的 `HttpRequestBag`。`ReceiveEndPlay` 中调用 `clearMixinRuntimeState(this)` 时, 未完成请求会自动取消, 避免对象销毁后继续回调蓝图或 UE 对象。
+- 在 `ReceiveBeginPlay` 中异步发起 HTTP 时, 使用 `runSafelyAsync` + `guardOwnerAsync` 包裹 (见 [CodeFormat.md](./CodeFormat.md) 4.3.1), 不限于 HTTP, 凡 `await` 后访问 `this` 的异步逻辑均适用。
 - 认证 token 通过 `Api.setBearerTokenProvider()` 动态提供, **不写入** `Config` 或源码常量。
 - `Config.http` 只保存 `baseUrl`、超时、默认 headers 和重试默认值。
+
+```typescript
+import { guardOwnerAsync, runSafelyAsync } from '../../../Runtime';
+
+const SCOPE = 'BP_Foo.loadProfile';
+
+ReceiveBeginPlay(): void {
+    void runSafelyAsync(SCOPE, () =>
+        guardOwnerAsync(this, SCOPE, async () => {
+            const profile = await Api.user.getProfile({ owner: this });
+            this.BP_UpdateUserName(profile.name);
+        })
+    );
+}
+```
 
 ---
 
@@ -112,7 +128,7 @@ getProfile: (options) => this.get<UserProfileDto>('/users/me', options)
 | 发送 | `transport.send()` | 返回 `HttpTransportTask` |
 | 处理响应 | `handleResponse` | 区分 Transport 失败 / 非 2xx / 成功, 并解析 body |
 
-失败时: 401 可触发 token 刷新 (不消耗重试次数); 否则按策略重试并指数退避。
+失败时: 401 可触发 token 刷新 (不消耗重试次数, 并发 401 共享同一次 refresh); 请求已 `cancel` 时不再进入重试; 否则按策略重试并指数退避。
 
 ### 4. UnrealHttpTransport → C++
 

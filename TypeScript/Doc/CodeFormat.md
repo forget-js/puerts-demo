@@ -82,12 +82,16 @@ npm start          # 生成 Catalog / 索引后 tsc --watch
 TypeScript/
 ├── Main.ts                          # 常驻入口，只调用 Bootstrap/startGame
 ├── Bootstrap/
-│   └── startGame.ts                 # 启动编排：配置、错误边界、Mixin、业务模块
+│   ├── startGame.ts                 # 启动编排：错误边界、Mixin、业务模块、ScriptLifecycle 绑定
+│   └── shutdownGame.ts              # 关闭编排：Mixin 全量清理、模块 stop/dispose
 ├── Runtime/
 │   ├── ModuleRegistry.ts            # 显式业务模块注册与生命周期
+│   ├── MixinState.ts                # get/clear MixinRuntimeState（UniqueID key）
+│   ├── ScriptLifecycle.ts           # argv ScriptLifecycle 绑定封装
+│   ├── ObjectValidity.ts            # isOwnerValid / guardOwnerAsync
 │   ├── DelegateBag.ts               # 委托绑定/释放管理
 │   ├── TimerBag.ts                  # setTimeout / setInterval 清理管理
-│   ├── ErrorBoundary.ts             # 启动与模块错误边界
+│   ├── ErrorBoundary.ts             # runSafely / runSafelyAsync 错误边界
 │   └── BuildInfo.ts                 # 脚本构建版本信息
 ├── Blueprints/
 │   ├── index.ts                      # Blueprint Catalog 运行时入口
@@ -273,10 +277,23 @@ private getRuntimeState(): BP_ActorRuntimeState {
 - TS 运行时临时状态，放 `getMixinRuntimeState(this)`，如 BeginPlay 记录的圆心、当前角度、委托与定时器。
 - 模块常量和类型声明，放模块顶层，如 `const ORBIT_ANGULAR_SPEED`、`interface OrbitRuntimeState`；类型声明编译后不会产生运行时代码。
 - 不要把实例运行时状态写成 Mixin class field，也不要通过 `constructor` 初始化。
+- 跨蓝图类引用（`loadBlueprintClass`）必须**延迟到使用点**懒加载，禁止在模块顶层执行 `loadBlueprintClass`；可用模块级 `let cachedClass` + 私有 getter 缓存。
+
+```typescript
+let cachedTargetClass: UE.Class | undefined;
+
+function getTargetClass(): UE.Class {
+    if (!cachedTargetClass) {
+        cachedTargetClass = loadBlueprintClass(SomeBlueprint);
+    }
+    return cachedTargetClass;
+}
+```
 
 **禁止：**
 
 - 在模块顶层定义可被其他文件误用的可变全局变量。
+- 在模块顶层调用 `loadBlueprintClass` / `UE.Class.Load`（会拖慢启动并建立隐式硬引用链）。
 - 在类外定义与实例运行时状态相关的「游离」变量（应放入 `MixinRuntimeState`）。
 - 在模块顶层定义与类无关的全局函数。
 
@@ -306,7 +323,36 @@ ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
 | --- | --- |
 | `ReceiveTick` | 默认不实现；必须 Tick 时需在模块说明中写清原因、性能影响与状态初始化方式，蓝图 Event Graph 也需有连线才会生效 |
 | 自定义函数勿以 `Receive` 开头 | `Receive` 保留给引擎 / 蓝图生命周期 |
-| `ReceiveEndPlay` | 必须清理定时器、委托、全局监听 |
+| `ReceiveEndPlay` / Widget `Destruct` | 必须调用 `clearMixinRuntimeState(this)`，清理定时器、委托、HTTP 请求 |
+| 关卡切换 / 脚本退出 | 由 `ScriptLifecycle` 触发 `clearAllMixinRuntimeStates` 兜底（仍须在 EndPlay 中显式清理） |
+
+### 4.3.1 异步逻辑（Mixin 生命周期内）
+
+在 `ReceiveBeginPlay` 等同步生命周期里**火-and-forget** 启动 `async` 逻辑，且 `await` 之后仍要访问 `this` 或其它 UE 对象时，统一使用 `runSafelyAsync` + `guardOwnerAsync`：
+
+```typescript
+import { guardOwnerAsync, runSafelyAsync } from '../../../Runtime';
+
+const DEMO_SCOPE = 'BP_Foo.runAsyncWork';
+
+ReceiveBeginPlay(): void {
+    void runSafelyAsync(DEMO_SCOPE, () =>
+        guardOwnerAsync(this, DEMO_SCOPE, async () => this.runAsyncWork())
+    );
+}
+```
+
+| 组件 | 作用 |
+| --- | --- |
+| `void` | 不阻塞 UE 生命周期方法；避免 floating promise 告警 |
+| `runSafelyAsync(scope, ...)` | 捕获未处理的 Promise rejection，写入 `ErrorBoundary` 日志；`scope` 建议 `类名.方法名` |
+| `guardOwnerAsync(this, ...)` | `await` 前后检查 `this` 是否仍有效，避免 Actor 已销毁后继续访问 |
+
+**适用场景**：任何会 `await` 且之后使用 `this` 的异步逻辑（HTTP、延时、未来其它异步 API），**不限于 HTTP**。
+
+**不适用**：纯同步初始化、`ReceiveTick` 内逻辑、从不触碰 UE 对象且无需错误边界的纯 JS 异步。
+
+Puerts 下未处理 rejection 主要依赖 `runSafelyAsync` 与业务内 `try/catch`，不要假设 `globalThis.onunhandledrejection` 一定生效。
 
 ### 4.4 监听与委托
 
