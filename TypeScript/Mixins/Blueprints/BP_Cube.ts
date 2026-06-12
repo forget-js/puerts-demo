@@ -8,7 +8,7 @@ import { $ref } from 'puerts';
 import { BP_CubeBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../Blueprints';
 import { GF } from '../../Global';
 import { Api, setupTestMockTransport } from '../../Game/Services';
-import { HttpError, UnrealHttpTransport } from '../../Runtime';
+import { guardOwnerAsync, HttpError, runSafelyAsync, UnrealHttpTransport } from '../../Runtime';
 
 // ===========================================================================
 //                           Blueprint Mixin 绑定
@@ -23,7 +23,9 @@ class BP_CubeMixin implements BP_CubeMixin {
     ReceiveBeginPlay(): void {
         GF.Log(this, 'BP_Cube BeginPlay');
         Api.setTransport(setupTestMockTransport());
-        void this.runTestHttpDemo();
+        void runSafelyAsync('BP_Cube.runTestHttpDemo', () =>
+            guardOwnerAsync(this, 'BP_Cube.runTestHttpDemo', async () => this.runTestHttpDemo())
+        );
     }
 
     // 演示用途: 每帧按 DeltaSeconds 旋转; 正式业务应避免 Tick, 改用 Timer 或事件驱动.

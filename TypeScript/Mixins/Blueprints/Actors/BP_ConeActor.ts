@@ -14,7 +14,9 @@ import { Api } from '../../../Game/Services';
 import {
     clearMixinRuntimeState,
     getMixinRuntimeState,
+    guardOwnerAsync,
     HttpError,
+    runSafelyAsync,
     UnrealHttpTransport,
     type MixinRuntimeState,
 } from '../../../Runtime';
@@ -57,7 +59,9 @@ class BP_ConeActorMixin implements BP_ConeActorMixin {
             angle: 0,
         };
         state.isMovementPaused = false;
-        void this.runTestUserHttpDemo();
+        void runSafelyAsync('BP_ConeActor.runTestUserHttpDemo', () =>
+            guardOwnerAsync(this, 'BP_ConeActor.runTestUserHttpDemo', async () => this.runTestUserHttpDemo())
+        );
     }
 
     ReceiveTick(DeltaSeconds: number): void {

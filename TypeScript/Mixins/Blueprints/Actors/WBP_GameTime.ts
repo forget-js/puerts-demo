@@ -19,7 +19,16 @@ import { clearMixinRuntimeState, getMixinRuntimeState, type MixinRuntimeState } 
 // ===========================================================================
 
 const GAME_TIME_TEXT_PREFIX = '游戏时间';
-const BP_CONE_ACTOR_CLASS = loadBlueprintClass(BP_ConeActorBlueprint);
+
+let cachedConeActorClass: UE.Class | undefined;
+
+function getConeActorClass(): UE.Class {
+    if (!cachedConeActorClass) {
+        cachedConeActorClass = loadBlueprintClass(BP_ConeActorBlueprint);
+    }
+
+    return cachedConeActorClass;
+}
 
 // ===========================================================================
 //                                   运行时状态
@@ -87,7 +96,7 @@ class WBP_GameTimeMixin implements WBP_GameTimeMixin {
     }
 
     private onToggleButtonClicked(): void {
-        const coneActor = UE.GameplayStatics.GetActorOfClass(this, BP_CONE_ACTOR_CLASS) as
+        const coneActor = UE.GameplayStatics.GetActorOfClass(this, getConeActorClass()) as
             | MovementControlActor
             | undefined;
 
