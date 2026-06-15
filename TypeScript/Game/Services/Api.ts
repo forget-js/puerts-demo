@@ -116,6 +116,14 @@ class ApiService implements ApiHttpDeps {
         return this.getClient().put<T>(url, body, options);
     }
 
+    patch<T = unknown>(
+        url: string,
+        body?: unknown,
+        options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}
+    ): HttpTask<T> {
+        return this.getClient().patch<T>(url, body, options);
+    }
+
     delete<T = unknown>(url: string, options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}): HttpTask<T> {
         return this.getClient().delete<T>(url, options);
     }

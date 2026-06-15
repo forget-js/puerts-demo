@@ -7,5 +7,6 @@ export interface ApiHttpDeps {
     get<T>(url: string, options?: ApiRequestOptions): HttpTask<T>;
     post<T>(url: string, body?: unknown, options?: ApiRequestOptions): HttpTask<T>;
     put<T>(url: string, body?: unknown, options?: ApiRequestOptions): HttpTask<T>;
+    patch<T>(url: string, body?: unknown, options?: ApiRequestOptions): HttpTask<T>;
     delete<T>(url: string, options?: ApiRequestOptions): HttpTask<T>;
 }
