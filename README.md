@@ -8,10 +8,10 @@
 
 ## 环境要求
 
-| 组件 | 说明 |
-| --- | --- |
+| 组件          | 说明                                                                               |
+| ------------- | ---------------------------------------------------------------------------------- |
 | Unreal Engine | 与本仓库 `PuertsDemo.uproject` 中 `EngineAssociation` 一致的版本（当前为 **5.7**） |
-| Node.js | 用于 TypeScript 编译、Blueprint Catalog 与 mixin 索引生成脚本 |
+| Node.js       | 用于 TypeScript 编译、Blueprint Catalog 与 mixin 索引生成脚本                      |
 
 ---
 
@@ -31,9 +31,55 @@ npm start                 # 生成 Catalog / 索引后 tsc --watch，输出到 C
 
 ```bash
 npm run build             # 写入脚本版本信息，生成 Catalog / 索引并编译到 Content/JavaScript
+npm run build:qa          # 使用 QA profile，关闭 Source Map，生成发布形态脚本
+npm run build:shipping    # 使用 Shipping profile，裁剪并校验 Content/JavaScript 发布产物
 ```
 
 运行时入口仍为 Puerts 侧加载的 **`Main`** 模块（由 `TypeScript/Main.ts` 编译为 `Content/JavaScript/Main.js`）。**C++ 宿主**由独立插件 **`Plugins/PuertsScriptHost`** 负责创建 `FJsEnv`、按配置启用调试端口，并在退出时触发 TS `stop/dispose`。`Main.ts` 会调用 `Bootstrap/startGame.ts`，由 Bootstrap 统一安装错误边界、加载 Mixin、注册并启动业务模块。
+
+---
+
+## 配置 Profile 与发布构建
+
+TypeScript 运行时配置按 profile 生成当前构建入口：
+
+- `TypeScript/Config/Env/config.dev.ts`：本地开发覆盖，已 gitignore；`npm install` 或 `npm start` 会按 `config.dev.example.ts` 自动创建。
+- `TypeScript/Config/Env/config.qa.ts`：QA / 验收环境配置，入库，仅放非敏感值。
+- `TypeScript/Config/Env/config.shipping.ts`：Shipping / 正式发布配置，入库，仅放非敏感值。
+- `TypeScript/Config/Env/config.active.ts`：由 `Scripts/select-config-profile.mjs` 生成，已 gitignore；`Config.ts` 只读取该 active profile。
+
+常用命令：
+
+```bash
+npm start                 # Development profile + tsc --watch
+npm run build:dev         # Development profile + Source Map
+npm run build:qa          # QA profile + tsconfig.release.json
+npm run build:shipping    # Shipping profile + prune + verify
+```
+
+`build:shipping` 会执行：
+
+1. 生成 `config.active.ts -> Shipping`
+2. 写入 `Runtime/BuildInfo.ts`
+3. 生成 Blueprint Catalog 与 Mixin 索引
+4. 使用 `tsconfig.release.json` 编译（`sourceMap=false`）
+5. 裁剪 `Content/JavaScript` 中的 `.map`、`PuertsEditor`、编辑器/测试 wasm 与 dev 配置残留
+6. 校验发布产物中不含 Apifox mock、`config.dev`、Development active profile 等禁词
+
+Android Shipping 打包可使用：
+
+```powershell
+npm run package:android -- -EngineRoot "C:\Program Files\Epic Games\UE_5.7"
+```
+
+或先设置 `UE_ROOT`、`ANDROID_HOME` / `ANDROID_SDK_ROOT`、`ANDROID_NDK_ROOT` 后执行 `npm run package:android`。脚本会先运行 `npm run build:shipping`，再显式调用 UAT 的 Android Shipping 打包，并输出到 `Dist/Android`。
+
+发布注意事项：
+
+- `config.qa.ts` / `config.shipping.ts` 只允许保存非敏感配置；token、账号、证书不得写入脚本。
+- Shipping 前必须确认 `http.baseUrl` 已替换为项目真实地址，不要保留示例域名。
+- `Content/JavaScript` 由本地或 CI 生成，不提交；打包前以 `npm run build:shipping` 产物为准。
+- `Plugins/Puerts/ThirdParty/v8_9.4.146.24/` 需要在打包机器上准备完整平台库，Android CI 也必须具备该目录。
 
 ---
 
@@ -43,22 +89,22 @@ npm run build             # 写入脚本版本信息，生成 Catalog / 索引�
 
 迁移到其他项目时请：
 
-1. 复制整个 `Plugins/PuertsScriptHost` 目录  
-2. 在目标 `.uproject` 中 **启用 `PuertsScriptHost`**（目标工程须已启用 **Puerts**）  
-3. 合并或复制 [`Config/DefaultPuerts.ini`](Config/DefaultPuerts.ini)（`DebugEnable` / `DebugPort` 等官方 Puerts 配置）  
+1. 复制整个 `Plugins/PuertsScriptHost` 目录
+2. 在目标 `.uproject` 中 **启用 `PuertsScriptHost`**（目标工程须已启用 **Puerts**）
+3. 合并或复制 [`Config/DefaultPuerts.ini`](Config/DefaultPuerts.ini)（`DebugEnable` / `DebugPort` 等官方 Puerts 配置）
 4. 选择 GameInstance 接入方式（二选一）：
-   - **有自定义 GameInstance**：在 `OnStart` 中调用 `GetSubsystem<UPuertsScriptHostSubsystem>()->StartScripts()`（本仓库 `MyGameInstance` 即此方式）  
-   - **零自定义 C++**：`DefaultEngine.ini` 设置 `GameInstanceClass=/Script/PuertsScriptHost.GameScriptHostGameInstance`  
+    - **有自定义 GameInstance**：在 `OnStart` 中调用 `GetSubsystem<UPuertsScriptHostSubsystem>()->StartScripts()`（本仓库 `MyGameInstance` 即此方式）
+    - **零自定义 C++**：`DefaultEngine.ini` 设置 `GameInstanceClass=/Script/PuertsScriptHost.GameScriptHostGameInstance`
 5. 确保 TS 在 `startGame` 末尾通过 `ScriptLifecycle` 绑定 shutdown 与 world cleanup（本仓库经 `Runtime/ScriptLifecycle.ts` 已实现）
 
 ### 插件职责
 
-| 组件 | 说明 |
-| --- | --- |
-| `UPuertsScriptHostSubsystem` | 唯一 `FJsEnv` 持有者；`StartScripts` / `StopScripts`；订阅 `OnWorldCleanup`；`Deinitialize` 时触发 TS shutdown |
-| `UPuertsScriptLifecycle` | `BindShutdown` / `BindWorldCleanup`，桥接 C++ 与 TS 关闭及关卡清理回调 |
-| `UGameScriptHostGameInstance` | 可选基类，免写项目 GameInstance |
-| `UPuertsScriptHostSettings` | 入口模块名（默认 `Main`）、argv 注入开关；**Edit → Project Settings → Plugins → Puerts Script Host** |
+| 组件                          | 说明                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `UPuertsScriptHostSubsystem`  | 唯一 `FJsEnv` 持有者；`StartScripts` / `StopScripts`；订阅 `OnWorldCleanup`；`Deinitialize` 时触发 TS shutdown |
+| `UPuertsScriptLifecycle`      | `BindShutdown` / `BindWorldCleanup`，桥接 C++ 与 TS 关闭及关卡清理回调                                         |
+| `UGameScriptHostGameInstance` | 可选基类，免写项目 GameInstance                                                                                |
+| `UPuertsScriptHostSettings`   | 入口模块名（默认 `Main`）、argv 注入开关；**Edit → Project Settings → Plugins → Puerts Script Host**           |
 
 调试端口读取官方 **`UPuertsSetting`**（`Config/DefaultPuerts.ini`）：`DebugEnable=false` 时不监听 Inspector；**Shipping 构建强制禁用**，忽略 ini。
 
@@ -70,38 +116,38 @@ npm run build             # 写入脚本版本信息，生成 Catalog / 索引�
 
 迁移到其他项目时请：
 
-1. 复制整个 `Plugins/PuertsMixinAutomation` 目录  
-2. 在目标工程的 `.uproject` 里 **启用插件 `PuertsMixinAutomation`**  
-3. 目标工程仍需已启用 **Puerts** 插件  
+1. 复制整个 `Plugins/PuertsMixinAutomation` 目录
+2. 在目标工程的 `.uproject` 里 **启用插件 `PuertsMixinAutomation`**
+3. 目标工程仍需已启用 **Puerts** 插件
 
 ### 插件做了哪些事
 
-| 时机 | 行为 |
-| --- | --- |
-| 点击编辑器工具栏 Puerts「生成 *.d.ts」 | Puerts `DeclarationGenerator` 完成后会触发本插件：按 `AutoCreateMixinPolicy` 创建缺失 Mixin 模板，并刷新 **Manifest / Blueprint Catalog / Mixin 聚合导入** |
-| `/Game/Blueprints/**` 下蓝图在编辑器中变更并写入资产注册表 | 防抖后调用声明生成刷新 `Typing`，并维护 Manifest、Catalog 与已有 Mixin 索引 |
-| Content Browser 中右键 Blueprint | 选择 **Create Puerts Mixin TS Script**，为选中蓝图显式创建对应 Mixin，并刷新 Manifest、Catalog 与 Mixin 聚合导入 |
-| Blueprint 在编辑器中重命名 | 按蓝图 GUID 同步 Manifest、Catalog、Mixin 文件名、Mixin 类名和 TypeScript 引用符号 |
+| 时机                                                       | 行为                                                                                                                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 点击编辑器工具栏 Puerts「生成 \*.d.ts」                    | Puerts `DeclarationGenerator` 完成后会触发本插件：按 `AutoCreateMixinPolicy` 创建缺失 Mixin 模板，并刷新 **Manifest / Blueprint Catalog / Mixin 聚合导入** |
+| `/Game/Blueprints/**` 下蓝图在编辑器中变更并写入资产注册表 | 防抖后调用声明生成刷新 `Typing`，并维护 Manifest、Catalog 与已有 Mixin 索引                                                                                |
+| Content Browser 中右键 Blueprint                           | 选择 **Create Puerts Mixin TS Script**，为选中蓝图显式创建对应 Mixin，并刷新 Manifest、Catalog 与 Mixin 聚合导入                                           |
+| Blueprint 在编辑器中重命名                                 | 按蓝图 GUID 同步 Manifest、Catalog、Mixin 文件名、Mixin 类名和 TypeScript 引用符号                                                                         |
 
 约定（可通过项目设置覆盖）：
 
-| 配置项（默认） | 含义 |
-| --- | --- |
-| 蓝图根路径 `/Game/Blueprints` | 声明生成与 Mixin 路径映射根路径 |
-| 脚本蓝图根路径 `/Game/Blueprints/Scripted` | 可选自动创建目录；右键显式创建不受该目录限制 |
-| Mixin TS 输出 `TypeScript/Mixins/Blueprints` | `Content/Blueprints/Foo/BP_XXX` → `TypeScript/Mixins/Blueprints/Foo/BP_XXX.ts` |
-| Manifest `TypeScript/Mixins/_generated/blueprint-manifest.json` | 记录蓝图 GUID、资产路径、Mixin 文件和生成符号 |
-| Blueprint Catalog `TypeScript/Blueprints/_generated/BlueprintCatalog.ts` | 生成蓝图描述符、运行时加载路径和 TS 类型映射 |
-| `AutoCreateMixinPolicy=Disabled` | 正式项目默认不自动创建模板；可选 `ScriptedRootOnly` / `All` |
-| `bCreateOnlyMissingMixins=true` | **不覆盖**已存在的 Mixin 文件 |
-| `bAutoSyncBlueprintRename=true` | 蓝图重命名后自动同步 Manifest / Catalog / Mixin 文件与 TS 引用 |
+| 配置项（默认）                                                           | 含义                                                                           |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| 蓝图根路径 `/Game/Blueprints`                                            | 声明生成与 Mixin 路径映射根路径                                                |
+| 脚本蓝图根路径 `/Game/Blueprints/Scripted`                               | 可选自动创建目录；右键显式创建不受该目录限制                                   |
+| Mixin TS 输出 `TypeScript/Mixins/Blueprints`                             | `Content/Blueprints/Foo/BP_XXX` → `TypeScript/Mixins/Blueprints/Foo/BP_XXX.ts` |
+| Manifest `TypeScript/Mixins/_generated/blueprint-manifest.json`          | 记录蓝图 GUID、资产路径、Mixin 文件和生成符号                                  |
+| Blueprint Catalog `TypeScript/Blueprints/_generated/BlueprintCatalog.ts` | 生成蓝图描述符、运行时加载路径和 TS 类型映射                                   |
+| `AutoCreateMixinPolicy=Disabled`                                         | 正式项目默认不自动创建模板；可选 `ScriptedRootOnly` / `All`                    |
+| `bCreateOnlyMissingMixins=true`                                          | **不覆盖**已存在的 Mixin 文件                                                  |
+| `bAutoSyncBlueprintRename=true`                                          | 蓝图重命名后自动同步 Manifest / Catalog / Mixin 文件与 TS 引用                 |
 
 Mixin 模板内容由 **`Plugins/PuertsMixinAutomation/Scripts/generate-mixin-template.mjs`** 生成（含 `getMixinRuntimeState` 与基础生命周期 stub）。修改模板只需编辑该脚本，**无需重新编译插件**。
 
 正式项目推荐流程：
 
 1. 新建 Blueprint，并放在 `/Game/Blueprints/**` 的常规业务目录下。
-2. 点击 Puerts「生成 *.d.ts」或保存蓝图触发声明刷新。
+2. 点击 Puerts「生成 \*.d.ts」或保存蓝图触发声明刷新。
 3. 在 Content Browser 中右键该 Blueprint，选择 **Create Puerts Mixin TS Script**。
 4. 插件会创建 `TypeScript/Mixins/Blueprints/.../BP_Xxx.ts`，并刷新 `blueprint-manifest.json`、`BlueprintCatalog.ts` 与 `_generated/mixin-imports.{shared,client,server}.ts`。
 
@@ -125,16 +171,16 @@ npm run gen:mixin-index
 
 ## TypeScript 入口约定（降低合并冲突）
 
-- **`TypeScript/Main.ts`**：常驻入口，只调用 `Bootstrap/startGame`。  
-- **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动；绑定 `ScriptLifecycle`（shutdown / world cleanup）。  
-- **`TypeScript/Bootstrap/shutdownGame.ts`**：关闭编排，`clearAllMixinRuntimeStates` → `stop` → `dispose`。  
-- **`TypeScript/Runtime/`**：轻量运行时基础层，包括 `MixinState`（UniqueID key）、`runSafely` / `runSafelyAsync`、`guardOwnerAsync`、`ScriptLifecycle` 绑定、模块生命周期、委托/定时器/HTTP 清理、错误边界和脚本版本信息。  
-- **`TypeScript/Game/Core/`**：玩法层基础设施（`NetRole`、`EventBus`）；**`Game/Messages/`** 定义跨模块消息；**`Game/Features/`** 承载业务协调（如 `MovementControlModule`、`DevHttpModule`）。  
-- **`TypeScript/Blueprints/index.ts`**：Blueprint Catalog 运行时入口；手写代码通过这里加载蓝图类、获取类型、注册 mixin。  
-- **`TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**：由 Manifest 生成，集中保存蓝图描述符与类型映射，勿手改。  
-- **`TypeScript/Mixins/register.ts`**：按 `NetRole` 条件加载 `_generated/mixin-imports.{shared,client,server}.ts`（人工一般不动）。  
-- **`TypeScript/Mixins/_generated/blueprint-manifest.json`**：由插件/脚本维护，记录蓝图 GUID、一对一 Mixin 映射与 `executionContext`。  
-- **`TypeScript/Mixins/_generated/mixin-imports.{shared,client,server}.ts`**：**由 `npm run gen:mixin-index` 或编辑器插件生成**，按 executionContext 写入 side-effect imports。  
+- **`TypeScript/Main.ts`**：常驻入口，只调用 `Bootstrap/startGame`。
+- **`TypeScript/Bootstrap/startGame.ts`**：启动编排，负责错误边界、Mixin 加载、业务模块注册与启动；绑定 `ScriptLifecycle`（shutdown / world cleanup）。
+- **`TypeScript/Bootstrap/shutdownGame.ts`**：关闭编排，`clearAllMixinRuntimeStates` → `stop` → `dispose`。
+- **`TypeScript/Runtime/`**：轻量运行时基础层，包括 `MixinState`（UniqueID key）、`runSafely` / `runSafelyAsync`、`guardOwnerAsync`、`ScriptLifecycle` 绑定、模块生命周期、委托/定时器/HTTP 清理、错误边界和脚本版本信息。
+- **`TypeScript/Game/Core/`**：玩法层基础设施（`NetRole`、`EventBus`）；**`Game/Messages/`** 定义跨模块消息；**`Game/Features/`** 承载业务协调（如 `MovementControlModule`、`DevHttpModule`）。
+- **`TypeScript/Blueprints/index.ts`**：Blueprint Catalog 运行时入口；手写代码通过这里加载蓝图类、获取类型、注册 mixin。
+- **`TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**：由 Manifest 生成，集中保存蓝图描述符与类型映射，勿手改。
+- **`TypeScript/Mixins/register.ts`**：按 `NetRole` 条件加载 `_generated/mixin-imports.{shared,client,server}.ts`（人工一般不动）。
+- **`TypeScript/Mixins/_generated/blueprint-manifest.json`**：由插件/脚本维护，记录蓝图 GUID、一对一 Mixin 映射与 `executionContext`。
+- **`TypeScript/Mixins/_generated/mixin-imports.{shared,client,server}.ts`**：**由 `npm run gen:mixin-index` 或编辑器插件生成**，按 executionContext 写入 side-effect imports。
 - **`TypeScript/Game/register.ts`**：业务模块显式注册入口（按 NetRole 过滤 `executionContext`），由 Bootstrap 调用。
 
 生成的 **相对路径应为 `../Blueprints/xxx`**（从 `_generated` 回到同级 `Mixins/Blueprints`）。若出现异常路径，请先重新编译 **PuertsMixinAutomation** 编辑器模块并触发一次索引生成。
@@ -147,9 +193,10 @@ npm run gen:mixin-index
 
 - **`Plugins/Puerts/ThirdParty/v8_9.4.146.24/`**：V8 预编译库与头文件目录（含 Win64 等平台 `.lib`，单文件可超过 GitHub 100MB 限制），**不入库**。克隆本仓库后，请从 [**Puerts**](https://github.com/Tencent/puerts) 与你当前 `Plugins/Puerts` 版本一致的发布包或源码配套说明中，准备同名的 `v8_9.4.146.24` 目录，放到本工程 **`Plugins/Puerts/ThirdParty/`** 下（与插件内 `Puerts/ThirdParty` 布局一致），再打开 UE 工程。
 
-- **`/Typing/`**：Puerts 生成的 UE 声明等（根目录）；勿用无斜杠前缀的 `Typing/`，否则会误忽略 `Plugins/Puerts/Typing`。  
-- **`/TypeScript/Mixins/_generated/blueprint-manifest.json`**：记录蓝图 GUID 与 Mixin 映射；建议提交，便于蓝图重命名同步与团队一致性校验。  
-- **`/TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**、**`/TypeScript/Mixins/_generated/mixin-imports.ts`** 及 **`mixin-imports.{shared,client,server}.ts`**：由工具生成，可按团队策略不再提交以减少冲突。**克隆或清理仓库后请先执行 `npm run gen:blueprint-catalog && npm run gen:mixin-index`。**  
+- **`/Typing/`**：Puerts 生成的 UE 声明等（根目录）；勿用无斜杠前缀的 `Typing/`，否则会误忽略 `Plugins/Puerts/Typing`。
+- **`/TypeScript/Mixins/_generated/blueprint-manifest.json`**：记录蓝图 GUID 与 Mixin 映射；建议提交，便于蓝图重命名同步与团队一致性校验。
+- **`/TypeScript/Blueprints/_generated/BlueprintCatalog.ts`**、**`/TypeScript/Mixins/_generated/mixin-imports.ts`** 及 **`mixin-imports.{shared,client,server}.ts`**：由工具生成，可按团队策略不再提交以减少冲突。**克隆或清理仓库后请先执行 `npm run gen:blueprint-catalog && npm run gen:mixin-index`。**
+- **`/TypeScript/Config/Env/config.active.ts`**：由 `Scripts/select-config-profile.mjs` 生成，指向当前构建 profile；勿提交。
 - **`/Content/JavaScript/**/*.js` 与 `.js.map`**：（若保持取消注释）不提交脚本编译产物时，始终以 `tsc` 本地/CI 产出为准。
 
 若这些生成文件曾被提交过，改为「仅本地生成」时可执行一次：
