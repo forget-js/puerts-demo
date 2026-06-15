@@ -8,7 +8,7 @@ import { $ref } from 'puerts';
 import { BP_CubeBlueprint, registerBlueprintMixin, type BlueprintInstance } from '../../Blueprints';
 import { DevHttp } from '../../Game/Features/DevHttp';
 import { GF } from '../../Global';
-import { guardOwnerAsync, runSafelyAsync } from '../../Runtime';
+import { clearMixinRuntimeState, guardOwnerAsync, runSafelyAsync } from '../../Runtime';
 
 // ===========================================================================
 //                           Blueprint Mixin 绑定
@@ -30,6 +30,11 @@ class BP_CubeMixin implements BP_CubeMixin {
     // 演示用途: 每帧按 DeltaSeconds 旋转; 正式业务应避免 Tick, 改用 Timer 或事件驱动.
     ReceiveTick(DeltaSeconds: number): void {
         this.K2_AddActorLocalRotation(new UE.Rotator(0, 0, DeltaSeconds * 10), false, $ref<UE.HitResult>(), false);
+    }
+
+    ReceiveEndPlay(EndPlayReason: UE.EEndPlayReason): void {
+        // BeginPlay 中的 DevHttp 请求使用 owner 追踪, EndPlay 时统一取消并释放状态.
+        clearMixinRuntimeState(this);
     }
 }
 
