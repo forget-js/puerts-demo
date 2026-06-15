@@ -1,5 +1,6 @@
 #include "PuertsHttpClient.h"
 
+#include "Async/Async.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
@@ -14,8 +15,26 @@ namespace
         FPuertsHttpResponse Response;
         Response.RequestId = RequestId;
         Response.bSucceeded = false;
+        Response.HeadersJson = TEXT("{}");
         Response.ErrorMessage = ErrorMessage;
         return Response;
+    }
+
+    const TCHAR* GetHttpRequestStatusName(EHttpRequestStatus::Type Status)
+    {
+        switch (Status)
+        {
+        case EHttpRequestStatus::NotStarted:
+            return TEXT("NotStarted");
+        case EHttpRequestStatus::Processing:
+            return TEXT("Processing");
+        case EHttpRequestStatus::Failed:
+            return TEXT("Failed");
+        case EHttpRequestStatus::Succeeded:
+            return TEXT("Succeeded");
+        default:
+            return TEXT("Unknown");
+        }
     }
 
     /**
@@ -197,8 +216,25 @@ void UPuertsHttpClient::HandleRequestComplete(
 
     if (!PuertsResponse.bSucceeded)
     {
-        PuertsResponse.ErrorMessage = TEXT("HTTP request failed.");
+        const EHttpRequestStatus::Type RequestStatus = Request.IsValid()
+            ? Request->GetStatus()
+            : EHttpRequestStatus::Failed;
+        PuertsResponse.ErrorMessage = FString::Printf(
+            TEXT("HTTP request failed. Status=%s, ResponseValid=%s, ResponseCode=%d"),
+            GetHttpRequestStatusName(RequestStatus),
+            Response.IsValid() ? TEXT("true") : TEXT("false"),
+            PuertsResponse.StatusCode
+        );
     }
 
-    PendingRequest.Callback.ExecuteIfBound(PuertsResponse);
+    // Puerts 回调会进入 JS VM, 必须回到 Game Thread, 避免平台 HTTP 线程直接调用脚本.
+    const TWeakObjectPtr<UPuertsHttpClient> WeakThis(this);
+    AsyncTask(ENamedThreads::GameThread, [WeakThis, Callback = PendingRequest.Callback, PuertsResponse]() mutable {
+        if (!WeakThis.IsValid())
+        {
+            return;
+        }
+
+        Callback.ExecuteIfBound(PuertsResponse);
+    });
 }
