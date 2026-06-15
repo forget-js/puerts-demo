@@ -57,7 +57,11 @@ class DevHttpService {
         }
 
         this.useRealTransport();
-        await runConeUserFlow(owner);
+        try {
+            await runConeUserFlow(owner);
+        } finally {
+            this.restoreDefaultTransport();
+        }
     }
 
     private useMockTransport(): void {
