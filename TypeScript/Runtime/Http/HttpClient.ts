@@ -28,6 +28,23 @@ export interface HttpClientOptions {
     readonly retry?: Partial<HttpRetryOptions>;
     readonly bearerTokenProvider?: BearerTokenProvider;
     readonly bearerTokenRefreshHandler?: BearerTokenRefreshHandler;
+    readonly hooks?: HttpClientHooks;
+}
+
+export interface HttpClientLifecycleEvent {
+    readonly method: HttpMethod;
+    readonly url: string;
+    readonly attempt: number;
+    readonly requestId?: number;
+    readonly statusCode?: number;
+    readonly elapsedMs?: number;
+    readonly error?: unknown;
+}
+
+export interface HttpClientHooks {
+    onRequest?(event: HttpClientLifecycleEvent): void;
+    onResponse?(event: HttpClientLifecycleEvent): void;
+    onError?(event: HttpClientLifecycleEvent): void;
 }
 
 const LOGGER = GF.CreateLogger('HttpClient');
@@ -51,6 +68,7 @@ export class HttpClient {
     private bearerTokenProvider?: BearerTokenProvider;
     private bearerTokenRefreshHandler?: BearerTokenRefreshHandler;
     private refreshInFlight?: Promise<boolean>;
+    private readonly hooks?: HttpClientHooks;
 
     constructor(options: HttpClientOptions) {
         this.transport = options.transport;
@@ -63,6 +81,7 @@ export class HttpClient {
         };
         this.bearerTokenProvider = options.bearerTokenProvider;
         this.bearerTokenRefreshHandler = options.bearerTokenRefreshHandler;
+        this.hooks = options.hooks;
     }
 
     setBearerTokenProvider(provider?: BearerTokenProvider): void {
@@ -142,6 +161,14 @@ export class HttpClient {
         return this.request<T>({ ...options, url, method: 'PUT', body });
     }
 
+    patch<T = unknown>(
+        url: string,
+        body?: unknown,
+        options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}
+    ): HttpTask<T> {
+        return this.request<T>({ ...options, url, method: 'PATCH', body });
+    }
+
     delete<T = unknown>(url: string, options: Omit<HttpRequestOptions, 'url' | 'method' | 'body'> = {}): HttpTask<T> {
         return this.request<T>({ ...options, url, method: 'DELETE' });
     }
@@ -160,6 +187,7 @@ export class HttpClient {
         let lastError: unknown;
 
         for (let attempt = 1; attempt <= retry.attempts; ++attempt) {
+            const attemptStartedAt = Date.now();
             if (isCanceled()) {
                 throw HttpError.canceled();
             }
@@ -175,11 +203,36 @@ export class HttpClient {
                     timeoutMs: options.timeoutMs ?? this.timeoutMs,
                 });
                 setActiveTask(transportTask);
+                this.emitHook('onRequest', {
+                    method,
+                    url,
+                    attempt,
+                    requestId: transportTask.requestId,
+                });
 
                 const response = await transportTask.promise;
-                return this.handleResponse<T>(response, method, url, options.responseType);
+                const elapsedMs = Date.now() - attemptStartedAt;
+                this.emitHook('onResponse', {
+                    method,
+                    url,
+                    attempt,
+                    requestId: response.requestId,
+                    statusCode: response.statusCode,
+                    elapsedMs,
+                });
+                return this.handleResponse<T>(response, method, url, options.responseType, attempt, elapsedMs);
             } catch (error) {
-                lastError = this.normalizeError(error, getActiveTask()?.requestId, method, url);
+                const elapsedMs = Date.now() - attemptStartedAt;
+                lastError = this.normalizeError(error, getActiveTask()?.requestId, method, url, attempt, elapsedMs);
+                this.emitHook('onError', {
+                    method,
+                    url,
+                    attempt,
+                    requestId: getActiveTask()?.requestId,
+                    statusCode: lastError instanceof HttpError ? lastError.statusCode : undefined,
+                    elapsedMs,
+                    error: lastError,
+                });
 
                 if (isCanceled()) {
                     throw HttpError.canceled();
@@ -237,7 +290,9 @@ export class HttpClient {
         response: HttpTransportResponse,
         method: HttpMethod,
         url: string,
-        responseType: HttpRequestOptions['responseType']
+        responseType: HttpRequestOptions['responseType'],
+        attempt: number,
+        elapsedMs: number
     ): T {
         if (response.canceled) {
             throw HttpError.canceled();
@@ -252,6 +307,8 @@ export class HttpClient {
                 url,
                 statusCode: response.statusCode,
                 responseBody: response.body,
+                attempt,
+                elapsedMs,
             });
         }
 
@@ -264,6 +321,8 @@ export class HttpClient {
                 url,
                 statusCode: response.statusCode,
                 responseBody: response.body,
+                attempt,
+                elapsedMs,
             });
         }
 
@@ -281,9 +340,16 @@ export class HttpClient {
     }
 
     /** 将 Transport 层抛出的裸 Error 统一包装为 {@link HttpError}, 并补全上下文. */
-    private normalizeError(error: unknown, requestId: number | undefined, method: HttpMethod, url: string): unknown {
+    private normalizeError(
+        error: unknown,
+        requestId: number | undefined,
+        method: HttpMethod,
+        url: string,
+        attempt: number,
+        elapsedMs: number
+    ): unknown {
         if (error instanceof HttpError) {
-            if (!error.method || !error.url || !error.requestId) {
+            if (!error.method || !error.url || !error.requestId || !error.attempt || !error.elapsedMs) {
                 return new HttpError({
                     kind: error.kind,
                     message: error.message,
@@ -292,6 +358,10 @@ export class HttpClient {
                     url: error.url || url,
                     statusCode: error.statusCode,
                     responseBody: error.responseBody,
+                    attempt: error.attempt || attempt,
+                    elapsedMs: error.elapsedMs || elapsedMs,
+                    transportCode: error.transportCode,
+                    traceId: error.traceId,
                     cause: error.originalError,
                 });
             }
@@ -304,8 +374,28 @@ export class HttpClient {
             requestId,
             method,
             url,
+            attempt,
+            elapsedMs,
             cause: error,
         });
+    }
+
+    private emitHook(name: keyof HttpClientHooks, event: HttpClientLifecycleEvent): void {
+        const hook = this.hooks?.[name];
+        if (!hook) {
+            return;
+        }
+
+        try {
+            hook(event);
+        } catch (error) {
+            // 生命周期 hook 只做诊断, 不能反向影响真实请求结果.
+            LOGGER.Warn('HTTP lifecycle hook failed', {
+                context: { hook: name, method: event.method, url: event.url },
+                error,
+                toScreen: false,
+            });
+        }
     }
 
     private resolveRetry(retry: HttpRequestOptions['retry']): HttpRetryOptions {

@@ -17,6 +17,10 @@ export interface HttpErrorOptions {
     readonly url?: string;
     readonly statusCode?: number;
     readonly responseBody?: string;
+    readonly attempt?: number;
+    readonly elapsedMs?: number;
+    readonly transportCode?: string;
+    readonly traceId?: string;
     readonly cause?: unknown;
 }
 
@@ -28,6 +32,10 @@ export class HttpError extends Error {
     readonly url?: string;
     readonly statusCode?: number;
     readonly responseBody?: string;
+    readonly attempt?: number;
+    readonly elapsedMs?: number;
+    readonly transportCode?: string;
+    readonly traceId?: string;
     readonly originalError?: unknown;
 
     constructor(options: HttpErrorOptions) {
@@ -39,6 +47,10 @@ export class HttpError extends Error {
         this.url = options.url;
         this.statusCode = options.statusCode;
         this.responseBody = options.responseBody;
+        this.attempt = options.attempt;
+        this.elapsedMs = options.elapsedMs;
+        this.transportCode = options.transportCode;
+        this.traceId = options.traceId;
         this.originalError = options.cause;
     }
 

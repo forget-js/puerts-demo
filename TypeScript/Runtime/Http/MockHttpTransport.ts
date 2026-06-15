@@ -12,6 +12,7 @@ import type {
     HttpTransportResponse,
     HttpTransportTask,
 } from './types';
+import { HttpError } from './HttpError';
 
 export type MockHttpHandler = (request: HttpTransportRequest) => HttpTransportResponse | Promise<HttpTransportResponse>;
 
@@ -22,10 +23,15 @@ interface MockRoute {
     readonly handler: MockHttpHandler;
 }
 
+interface PendingMockTask {
+    timer: ReturnType<typeof setTimeout>;
+    reject(error: unknown): void;
+}
+
 export class MockHttpTransport implements HttpTransport {
     private nextRequestId = 1;
     private readonly routes: MockRoute[] = [];
-    private readonly timers = new Map<number, ReturnType<typeof setTimeout>>();
+    private readonly pendingTasks = new Map<number, PendingMockTask>();
 
     /** 按 method + 完整 url 精确匹配 handler. */
     register(method: string, url: string, handler: MockHttpHandler): void {
@@ -53,32 +59,41 @@ export class MockHttpTransport implements HttpTransport {
         const promise = new Promise<HttpTransportResponse>((resolve, reject) => {
             rejectTask = reject;
             const timer = setTimeout(() => {
-                this.timers.delete(requestId);
+                this.pendingTasks.delete(requestId);
                 this.resolveMockRequest(requestId, request).then(resolve, reject);
             }, 0);
 
-            this.timers.set(requestId, timer);
+            this.pendingTasks.set(requestId, {
+                timer,
+                reject,
+            });
         });
 
         return {
             requestId,
             promise,
             cancel: (reason = 'Mock HTTP request canceled') => {
-                const timer = this.timers.get(requestId);
-                if (timer) {
-                    clearTimeout(timer);
-                    this.timers.delete(requestId);
+                const task = this.pendingTasks.get(requestId);
+                if (!task) {
+                    return;
                 }
-                rejectTask(new Error(reason));
+
+                this.pendingTasks.delete(requestId);
+                clearTimeout(task.timer);
+                rejectTask(HttpError.canceled(reason));
             },
         };
     }
 
     cancelAll(): void {
-        for (const timer of this.timers.values()) {
-            clearTimeout(timer);
+        const tasks = Array.from(this.pendingTasks.entries());
+        this.pendingTasks.clear();
+
+        for (const [, task] of tasks) {
+            // Mock 也要和真实 Transport 一样主动 reject, 这样单测能覆盖取消契约.
+            clearTimeout(task.timer);
+            task.reject(HttpError.canceled('Mock HTTP transport canceled all pending requests'));
         }
-        this.timers.clear();
     }
 
     private async resolveMockRequest(requestId: number, request: HttpTransportRequest): Promise<HttpTransportResponse> {
